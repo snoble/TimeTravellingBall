@@ -1,12 +1,13 @@
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
+import Math.Vector2 exposing (vec2, Vec2, normalize, scale, add)
 
 import Browser
 import Browser.Events
 import Html exposing (..)
 import Task
 import Time
-
+import Debug
 
 
 -- MAIN
@@ -26,16 +27,27 @@ main =
 
 
 type alias Model =
-  { zone : Time.Zone
-  , time : Time.Posix
+  { t0 : Maybe Time.Posix,
+    relativeTime : Float,
+    v0: Vec2,
+    x0: Vec2,
+    acc: Vec2
   }
 
+accFromV: Vec2 -> Vec2
+accFromV = \v ->
+  Debug.log "acc" (v |> normalize |> scale -0.00005)
 
 init : () -> (Model, Cmd Msg)
 init _ =
-  ( Model Time.utc (Time.millisToPosix 0)
-  , Task.perform AdjustTimeZone Time.here
-  )
+  let
+    v0 = vec2 0.1 0.2
+    x0 = vec2 15 15
+    acc = accFromV v0
+  in
+    ( Model Nothing 0 v0 x0 acc
+    , Task.perform SetTime Time.now
+    )
 
 
 
@@ -44,7 +56,7 @@ init _ =
 
 type Msg
   = Tick Time.Posix
-  | AdjustTimeZone Time.Zone
+  | SetTime Time.Posix
 
 
 
@@ -52,12 +64,18 @@ update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     Tick newTime ->
-      ( { model | time = newTime }
+      let
+          newModel = model.t0
+            |> Maybe.map (\t0 -> { model | relativeTime = ((Time.posixToMillis newTime) - (Time.posixToMillis t0)) |> toFloat })
+            |> Maybe.withDefault model
+      in
+      
+      ( newModel
       , Cmd.none
       )
 
-    AdjustTimeZone newZone ->
-      ( { model | zone = newZone }
+    SetTime t ->
+      ( { model | t0 = Just t  }
       , Cmd.none
       )
 
@@ -78,8 +96,8 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
   let
-    hour   = String.fromInt (Time.toHour   model.zone model.time)
-    minute = String.padLeft 2 '0' <| String.fromInt (Time.toMinute model.zone model.time)
-    second = String.padLeft 2 '0' <| String.fromInt (Time.toSecond model.zone model.time)
+    pos = model.x0 |> add (model.v0 |> scale model.relativeTime ) |> add (model.acc |> scale ((model.relativeTime ^ 2) * 0.5))
+    xString = pos |> Math.Vector2.getX |> round |> String.fromInt
+    yString = pos |> Math.Vector2.getX |> round |> String.fromInt
   in
-  h1 [] [ Svg.text (hour ++ ":" ++ minute ++ ":" ++ second) ]
+    svg [Svg.Attributes.style "position:fixed; top:0; left:0; height:100%; width:100%"] [Svg.circle [ cx xString, cy yString, r "10"] []]
