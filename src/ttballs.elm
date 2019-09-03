@@ -35,8 +35,7 @@ type alias Model =
   }
 
 accFromV: Vec2 -> Vec2
-accFromV = \v ->
-  Debug.log "acc" (v |> normalize |> scale -0.00005)
+accFromV = normalize >> scale -0.0001
 
 init : () -> (Model, Cmd Msg)
 init _ =
@@ -86,7 +85,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  Browser.Events.onAnimationFrame Tick
+  Time.every 500 Tick
 
 
 
@@ -96,8 +95,26 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
   let
-    pos = model.x0 |> add (model.v0 |> scale model.relativeTime ) |> add (model.acc |> scale ((model.relativeTime ^ 2) * 0.5))
-    xString = pos |> Math.Vector2.getX |> round |> String.fromInt
-    yString = pos |> Math.Vector2.getX |> round |> String.fromInt
+    duration = Math.Vector2.length model.v0 / Math.Vector2.length model.acc
+    endPos = model.x0 |> add (model.v0 |> scale duration ) |> add (model.acc |> scale ((duration ^ 2) * 0.5))
+    xString = model.x0 |> Math.Vector2.getX |> round |> String.fromInt
+    yString = model.x0 |> Math.Vector2.getX |> round |> String.fromInt
+    endPosXString = endPos |> Math.Vector2.getX |> round |> String.fromInt
+    endPosYString = endPos |> Math.Vector2.getY |> round |> String.fromInt
   in
-    svg [Svg.Attributes.style "position:fixed; top:0; left:0; height:100%; width:100%"] [Svg.circle [ cx xString, cy yString, r "10"] []]
+    svg [Svg.Attributes.style "position:fixed; top:0; left:0; height:100%; width:100%"] [Svg.circle [ 
+        cx xString,
+        cy yString,
+        r "10",
+        fill "red"
+        ] [
+          Svg.animateMotion [
+              Svg.Attributes.path <| String.join " " ["M", xString, yString, "L", endPosXString, endPosYString],
+              keyPoints "0;1",
+              keyTimes "0;1",
+              keySplines "0.333 0.667 0.667 1",
+              calcMode "spline",
+              fill "freeze",
+              dur <| String.concat [duration |> round |> String.fromInt, "ms"] 
+          ] []
+        ]]
