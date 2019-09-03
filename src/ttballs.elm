@@ -6,6 +6,7 @@ import Math.Vector2 exposing (vec2, Vec2, normalize, scale, add)
 import Browser
 import Browser.Events
 import Html exposing (..)
+import Html.Attributes as H
 import Task
 import Time
 import Debug
@@ -93,7 +94,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Time.every 500 Tick
+    Browser.Events.onAnimationFrame Tick
 
 
 
@@ -120,23 +121,32 @@ view model =
 
         endPosYString =
             endPos |> Math.Vector2.getY |> round |> String.fromInt
+
+        maxRange =
+            ceiling duration
+
+        relTimeString =
+            Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
     in
-        svg [ Svg.Attributes.style "position:fixed; top:0; left:0; height:100%; width:100%" ]
-            [ Svg.circle
-                [ cx xString
-                , cy yString
-                , r "10"
-                , fill "red"
-                ]
-                [ Svg.animateMotion
-                    [ Svg.Attributes.path <| String.join " " [ "M", xString, yString, "L", endPosXString, endPosYString ]
-                    , keyPoints "0;1"
-                    , keyTimes "0;1"
-                    , keySplines "0.333 0.667 0.667 1"
-                    , calcMode "spline"
-                    , fill "freeze"
-                    , dur <| String.concat [ duration |> round |> String.fromInt, "ms" ]
+        div []
+            [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly True ] []
+            , svg [ Svg.Attributes.style "position:fixed; top:0; left:0; height:100%; width:100%" ]
+                [ Svg.circle
+                    [ cx xString
+                    , cy yString
+                    , r "10"
+                    , fill "red"
                     ]
-                    []
+                    [ Svg.animateMotion
+                        [ Svg.Attributes.path <| String.join " " [ "M", xString, yString, "L", endPosXString, endPosYString ]
+                        , keyPoints "0;1"
+                        , keyTimes "0;1"
+                        , keySplines "0.333 0.667 0.667 1"
+                        , calcMode "spline"
+                        , fill "freeze"
+                        , dur <| String.concat [ duration |> round |> String.fromInt, "ms" ]
+                        ]
+                        []
+                    ]
                 ]
             ]
