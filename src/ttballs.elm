@@ -101,7 +101,10 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if model.paused then Sub.none else Browser.Events.onAnimationFrame Tick
+    if model.paused then
+        Sub.none
+    else
+        Browser.Events.onAnimationFrame Tick
 
 
 
