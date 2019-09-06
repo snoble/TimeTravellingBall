@@ -1,17 +1,18 @@
 module Main exposing (..)
 
-import Svg exposing (..)
-import Svg.Attributes exposing (..)
-import Math.Vector2 exposing (vec2, Vec2, normalize, scale, add)
 import Browser
 import Browser.Events
+import Debug
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
+import Math.Vector2 exposing (Vec2, add, normalize, scale, vec2)
+import Platform.Sub as Sub
+import Svg exposing (..)
+import Svg.Attributes exposing (..)
 import Task
 import Time
-import Platform.Sub as Sub
-import Debug
+
 
 
 -- MAIN
@@ -57,9 +58,9 @@ init _ =
         acc =
             accFromV v0
     in
-        ( Model Nothing 0 v0 x0 acc False
-        , Task.perform SetTime Time.now
-        )
+    ( Model Nothing 0 v0 x0 acc False
+    , Task.perform SetTime Time.now
+    )
 
 
 
@@ -79,12 +80,12 @@ update msg model =
             let
                 newModel =
                     model.t0
-                        |> Maybe.map (\t0 -> { model | relativeTime = ((Time.posixToMillis newTime) - (Time.posixToMillis t0)) |> toFloat })
+                        |> Maybe.map (\t0 -> { model | relativeTime = (Time.posixToMillis newTime - Time.posixToMillis t0) |> toFloat })
                         |> Maybe.withDefault model
             in
-                ( newModel
-                , Cmd.none
-                )
+            ( newModel
+            , Cmd.none
+            )
 
         SetTime t ->
             ( { model | t0 = Just t }
@@ -103,6 +104,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     if model.paused then
         Sub.none
+
     else
         Browser.Events.onAnimationFrame Tick
 
@@ -153,33 +155,34 @@ view model =
         ksy2 =
             ksy1 + 0.333
     in
-        div []
-            [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
-            , button [ onClick (Pause model.paused), H.readonly False ]
-                [ Html.text
-                    (if model.paused then
-                        "▶"
-                     else
-                        "⏸"
-                    )
+    div []
+        [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
+        , button [ onClick (Pause model.paused), H.readonly False ]
+            [ Html.text
+                (if model.paused then
+                    "▶"
+
+                 else
+                    "⏸"
+                )
+            ]
+        , svg [ Svg.Attributes.style "position:fixed; top: 50px; left:0; height:100%; width:100%" ]
+            [ Svg.circle
+                [ cx xString
+                , cy yString
+                , r "10"
+                , fill "red"
                 ]
-            , svg [ Svg.Attributes.style "position:fixed; top: 50px; left:0; height:100%; width:100%" ]
-                [ Svg.circle
-                    [ cx xString
-                    , cy yString
-                    , r "10"
-                    , fill "red"
+                [ Svg.animateMotion
+                    [ Svg.Attributes.path <| String.join " " [ "M", xString, yString, "L", endPosXString, endPosYString ]
+                    , keyPoints "0;1"
+                    , keyTimes "0;1"
+                    , keySplines ([ ksx1, ksy1, ksx2, ksy2 ] |> List.map String.fromFloat |> String.join " ")
+                    , calcMode "spline"
+                    , fill "freeze"
+                    , dur <| String.concat [ duration |> round |> String.fromInt, "ms" ]
                     ]
-                    [ Svg.animateMotion
-                        [ Svg.Attributes.path <| String.join " " [ "M", xString, yString, "L", endPosXString, endPosYString ]
-                        , keyPoints "0;1"
-                        , keyTimes "0;1"
-                        , keySplines ([ ksx1, ksy1, ksx2, ksy2 ] |> List.map String.fromFloat |> String.join " ")
-                        , calcMode "spline"
-                        , fill "freeze"
-                        , dur <| String.concat [ duration |> round |> String.fromInt, "ms" ]
-                        ]
-                        []
-                    ]
+                    []
                 ]
             ]
+        ]
