@@ -6,7 +6,7 @@ import Debug
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
-import Math.Vector2 exposing (Vec2, add, normalize, vec2, getX, getY)
+import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
@@ -122,17 +122,17 @@ view model =
         endPos =
             model.x0 |> add (model.v0 |> Math.Vector2.scale duration) |> add (model.acc |> Math.Vector2.scale ((duration ^ 2) * 0.5))
 
+        movements =
+            [ { endPos = endPos, endTime = duration |> round, velocityRatio = 0 } ]
+
+        stringArgs =
+            movementsToSvgPath model.x0 movements
+
         xString =
             model.x0 |> Math.Vector2.getX |> round |> String.fromInt
 
         yString =
             model.x0 |> Math.Vector2.getX |> round |> String.fromInt
-
-        endPosXString =
-            endPos |> Math.Vector2.getX |> round |> String.fromInt
-
-        endPosYString =
-            endPos |> Math.Vector2.getY |> round |> String.fromInt
 
         maxRange =
             ceiling duration
@@ -140,20 +140,6 @@ view model =
         relTimeString =
             Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
 
-        endVOverStartV =
-            0
-
-        ksx1 =
-            0.333
-
-        ksx2 =
-            0.667
-
-        ksy1 =
-            2.0 / (3.0 * (1.0 + endVOverStartV))
-
-        ksy2 =
-            ksy1 + 0.333
     in
     div []
         [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
@@ -174,13 +160,13 @@ view model =
                 , fill "red"
                 ]
                 [ Svg.animateMotion
-                    [ Svg.Attributes.path <| String.join " " [ "M", xString, yString, "L", endPosXString, endPosYString ]
-                    , keyPoints "0;1"
-                    , keyTimes "0;1"
-                    , keySplines ([ ksx1, ksy1, ksx2, ksy2 ] |> List.map String.fromFloat |> String.join " ")
+                    [ Svg.Attributes.path stringArgs.path
+                    , keyPoints stringArgs.keyPoints
+                    , keyTimes stringArgs.keyTimes
+                    , keySplines stringArgs.keySplines
                     , calcMode "spline"
                     , fill "freeze"
-                    , dur <| String.concat [ duration |> round |> String.fromInt, "ms" ]
+                    , dur stringArgs.dur
                     ]
                     []
                 ]
@@ -219,8 +205,12 @@ movementsToSvgPath startPos movements =
                     )
                     { distance = 0, duration = 0, lastPos = startPos }
 
-        distanceT = totals.distance
-        durationT = totals.duration
+        distanceT =
+            totals.distance
+
+        durationT =
+            totals.duration
+
         lists =
             movements
                 |> List.foldl
@@ -244,7 +234,7 @@ movementsToSvgPath startPos movements =
                                 let
                                     ktDiff =
                                         if durationT > 0 then
-                                            (toFloat (move.endTime - lastTime)) / (toFloat durationT)
+                                            toFloat (move.endTime - lastTime) / toFloat durationT
 
                                         else
                                             1.0
@@ -265,17 +255,23 @@ movementsToSvgPath startPos movements =
                             , lastPos = move.endPos
                             , lastTime = move.endTime
                             }
-                    ) { path = [ startPos ], keyPoints = [ 0.0 ], keyTimes = [ 0.0 ], keySplines = [], lastPos = startPos, lastTime = 0 }
+                    )
+                    { path = [ startPos ], keyPoints = [ 0.0 ], keyTimes = [ 0.0 ], keySplines = [], lastPos = startPos, lastTime = 0 }
     in
-    { path = "M" :: (lists.path
-      |> List.reverse
-      |> List.map (\v -> [getX v, getY v] |> List.map (round >> String.fromInt) |> String.join " ")
-      |> List.intersperse "L")
-      |> String.join " "
-    , 
-    keyPoints = lists.keyPoints |> List.reverse |> List.map String.fromFloat |> String.join " ",
-    keyTimes = lists.keyTimes |> List.reverse |> List.map String.fromFloat |> String.join " ",
-    keySplines = lists.keySplines |> List.reverse
-      |> List.map (\(v1, v2) -> [getX v1, getY v1, getX v2, getY v2] |> List.map String.fromFloat |> String.join " ")
-      |> String.join " ; ",
-    dur = "" }
+    { path =
+        "M"
+            :: (lists.path
+                    |> List.reverse
+                    |> List.map (\v -> [ getX v, getY v ] |> List.map (round >> String.fromInt) |> String.join " ")
+                    |> List.intersperse "L"
+               )
+            |> String.join " "
+    , keyPoints = lists.keyPoints |> List.reverse |> List.map String.fromFloat |> String.join ";"
+    , keyTimes = lists.keyTimes |> List.reverse |> List.map String.fromFloat |> String.join ";"
+    , keySplines =
+        lists.keySplines
+            |> List.reverse
+            |> List.map (\( v1, v2 ) -> [ getX v1, getY v1, getX v2, getY v2 ] |> List.map String.fromFloat |> String.join " ")
+            |> String.join " ; "
+    , dur = String.concat [ totals.duration |> String.fromInt, "ms" ]
+    }
