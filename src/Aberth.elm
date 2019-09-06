@@ -72,7 +72,7 @@ converge : List Float -> Float -> List Complex -> List Complex
 converge coefs epsilon roots =
     let
         newRoots =
-          roots |> List.indexedMap (\idx -> \root -> aberthehrlich coefs roots idx root)
+            roots |> List.indexedMap (\idx -> \root -> aberthehrlich coefs roots idx root)
     in
     if (diff newRoots roots |> norm) < epsilon then
         newRoots
@@ -127,13 +127,19 @@ solve coefs epsilon =
                                 (\k ->
                                     Complex.real radius |> Complex.multiply (Complex.exp (Complex.multiply img (Complex.real (theta * toFloat k + offset))))
                                 )
-                    truncateFl = \root ->
-                      let
-                          pow = logBase 10 epsilon |> round |> negate |> toFloat
-                          {re, im} = root |> Complex.toCartesian
-                          tr = \x -> (x * (10.0^pow) |> round |> toFloat) / (10.0^pow)
-                      in
-                          complex (tr re) (tr im)  
-                      
+
+                    truncateFl =
+                        \root ->
+                            let
+                                pow =
+                                    logBase 10 epsilon |> round |> negate |> toFloat
+
+                                { re, im } =
+                                    root |> Complex.toCartesian
+
+                                tr =
+                                    \x -> (x * (10.0 ^ pow) |> round |> toFloat) / (10.0 ^ pow)
+                            in
+                            complex (tr re) (tr im)
                 in
                 converge coefs epsilon initialRoots |> List.map truncateFl
