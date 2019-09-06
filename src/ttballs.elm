@@ -272,4 +272,10 @@ movementsToSvgPath startPos movements =
       |> List.map (\v -> [getX v, getY v] |> List.map (round >> String.fromInt) |> String.join " ")
       |> List.intersperse "L")
       |> String.join " "
-    , keyPoints = "", keyTimes = "", keySplines = "", dur = "" }
+    , 
+    keyPoints = lists.keyPoints |> List.reverse |> List.map String.fromFloat |> String.join " ",
+    keyTimes = lists.keyTimes |> List.reverse |> List.map String.fromFloat |> String.join " ",
+    keySplines = lists.keySplines |> List.reverse
+      |> List.map (\(v1, v2) -> [getX v1, getY v1, getX v2, getY v2] |> List.map String.fromFloat |> String.join " ")
+      |> String.join " ; ",
+    dur = "" }
