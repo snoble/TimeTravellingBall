@@ -139,7 +139,6 @@ view model =
 
         relTimeString =
             Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
-
     in
     div []
         [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
