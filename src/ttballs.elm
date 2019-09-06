@@ -6,7 +6,7 @@ import Debug
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
-import Math.Vector2 exposing (Vec2, add, normalize, scale, vec2)
+import Math.Vector2 exposing (Vec2, add, normalize, vec2, getX, getY)
 import Platform.Sub as Sub
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
@@ -43,7 +43,7 @@ type alias Model =
 
 accFromV : Vec2 -> Vec2
 accFromV =
-    normalize >> scale -0.0001
+    normalize >> Math.Vector2.scale -0.0001
 
 
 init : () -> ( Model, Cmd Msg )
@@ -120,7 +120,7 @@ view model =
             Math.Vector2.length model.v0 / Math.Vector2.length model.acc
 
         endPos =
-            model.x0 |> add (model.v0 |> scale duration) |> add (model.acc |> scale ((duration ^ 2) * 0.5))
+            model.x0 |> add (model.v0 |> Math.Vector2.scale duration) |> add (model.acc |> Math.Vector2.scale ((duration ^ 2) * 0.5))
 
         xString =
             model.x0 |> Math.Vector2.getX |> round |> String.fromInt
@@ -186,3 +186,90 @@ view model =
                 ]
             ]
         ]
+
+
+type alias BallMovement =
+    { endPos : Vec2
+    , endTime : Int
+    , velocityRatio : Float
+    }
+
+
+type alias SvgMotion =
+    { path : String
+    , keyPoints : String
+    , keyTimes : String
+    , keySplines : String
+    , dur : String
+    }
+
+
+movementsToSvgPath : Vec2 -> List BallMovement -> SvgMotion
+movementsToSvgPath startPos movements =
+    let
+        totals =
+            movements
+                |> List.foldl
+                    (\move ->
+                        \{ distance, duration, lastPos } ->
+                            { distance = distance + Math.Vector2.distance lastPos move.endPos
+                            , duration = move.endTime
+                            , lastPos = move.endPos
+                            }
+                    )
+                    { distance = 0, duration = 0, lastPos = startPos }
+
+        distanceT = totals.distance
+        durationT = totals.duration
+        lists =
+            movements
+                |> List.foldl
+                    (\move ->
+                        \{ path, keyPoints, keyTimes, keySplines, lastPos, lastTime } ->
+                            { path = move.endPos :: path
+                            , keyPoints =
+                                let
+                                    kpDiff =
+                                        if distanceT > 0 then
+                                            Math.Vector2.distance lastPos move.endPos / distanceT
+
+                                        else
+                                            1.0
+
+                                    kp =
+                                        kpDiff + (keyPoints |> List.head |> Maybe.withDefault 0.0)
+                                in
+                                kp :: keyPoints
+                            , keyTimes =
+                                let
+                                    ktDiff =
+                                        if durationT > 0 then
+                                            (toFloat (move.endTime - lastTime)) / (toFloat durationT)
+
+                                        else
+                                            1.0
+
+                                    kt =
+                                        ktDiff + (keyTimes |> List.head |> Maybe.withDefault 0.0)
+                                in
+                                kt :: keyTimes
+                            , keySplines =
+                                let
+                                    v =
+                                        vec2 (1.0 / 3.0) (2.0 / (3.0 * (1.0 + move.velocityRatio)))
+
+                                    spline =
+                                        ( v, Math.Vector2.add v (vec2 (1.0 / 3.0) (1.0 / 3.0)) )
+                                in
+                                spline :: keySplines
+                            , lastPos = move.endPos
+                            , lastTime = move.endTime
+                            }
+                    ) { path = [ startPos ], keyPoints = [ 0.0 ], keyTimes = [ 0.0 ], keySplines = [], lastPos = startPos, lastTime = 0 }
+    in
+    { path = "M" :: (lists.path
+      |> List.reverse
+      |> List.map (\v -> [getX v, getY v] |> List.map (round >> String.fromInt) |> String.join " ")
+      |> List.intersperse "L")
+      |> String.join " "
+    , keyPoints = "", keyTimes = "", keySplines = "", dur = "" }
