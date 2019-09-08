@@ -2,7 +2,6 @@ module Main exposing (..)
 
 import Browser
 import Browser.Events
-import Debug
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
@@ -93,7 +92,7 @@ update msg model =
             )
 
         Pause paused ->
-            ( { model | paused = not (Debug.log "Pause" paused) }, Cmd.none )
+            ( { model | paused = not paused }, Cmd.none )
 
 
 

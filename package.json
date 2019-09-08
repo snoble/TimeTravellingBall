@@ -11,7 +11,7 @@
   
   },
   "scripts": {
-    "dev": "parcel src/ttballs.elm",
-    "build": "parcel build src/ttballs.elm"
+    "dev": "parcel index.html",
+    "build": "parcel build index.html"
   }
 }
