@@ -5,7 +5,7 @@ import Browser.Events
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
-import Html.Events.Extra.Mouse as Mouse
+import Html.Events.Extra.Pointer as Mouse
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
 import Svg exposing (..)
@@ -198,10 +198,10 @@ view model =
                             (\( s, e ) ->
                                 let
                                     ( posX1, posY1 ) =
-                                        s.offsetPos
+                                        s.pointer.offsetPos
 
                                     ( posX2, posY2 ) =
-                                        e.offsetPos
+                                        e.pointer.offsetPos
                                 in
                                 [ Svg.line
                                     [ x1 (posX1 |> String.fromFloat)
