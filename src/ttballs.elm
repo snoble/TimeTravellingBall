@@ -101,16 +101,34 @@ update msg model =
             ( { model | paused = not paused }, Cmd.none )
 
         MouseDownEvent event ->
-            ( { model | line = Just ( event, event ) }, Cmd.none )
+            ( if event.isPrimary then { model | line = Just ( event, event ) } else model, Cmd.none )
 
         MouseMoveEvent event ->
-            ( { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, event )) }, Cmd.none )
+            ( if event.isPrimary then
+                { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, event )) }
+
+              else
+                model
+            , Cmd.none
+            )
 
         MouseUpEvent event ->
-            ( { model | line = Nothing }, Cmd.none )
+            ( if event.isPrimary then
+                { model | line = Nothing }
+
+              else
+                model
+            , Cmd.none
+            )
 
         MouseLeaveEvent event ->
-            ( { model | line = Nothing }, Cmd.none )
+            ( if event.isPrimary then
+                { model | line = Nothing }
+
+              else
+                model
+            , Cmd.none
+            )
 
 
 
