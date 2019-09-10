@@ -51,7 +51,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v0 =
-            vec2 0.1 0.2
+            vec2 0.2 0.4
 
         x0 =
             vec2 15 15
