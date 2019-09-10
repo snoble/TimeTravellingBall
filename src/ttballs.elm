@@ -157,7 +157,13 @@ view model =
         relTimeString =
             Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
     in
-    div [ H.style "display" "grid", H.style "grid-template-rows" "max-content max-content 1fr", H.style "height" "100%", H.style "width" "100%" ]
+    div
+        [ H.style "display" "grid"
+        , H.style "grid-template-rows" "max-content max-content 1fr"
+        , H.style "height" "100%"
+        , H.style "width" "100%"
+        , H.style "touch-action" "none"
+        ]
         [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
         , button [ onClick (Pause model.paused), H.readonly False, H.style "width" "2em" ]
             [ Html.text
