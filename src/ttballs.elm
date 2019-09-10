@@ -157,9 +157,9 @@ view model =
         relTimeString =
             Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
     in
-    div []
+    div [ H.style "display" "grid", H.style "grid-template-rows" "max-content max-content 1fr", H.style "height" "100%", H.style "width" "100%" ]
         [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
-        , button [ onClick (Pause model.paused), H.readonly False ]
+        , button [ onClick (Pause model.paused), H.readonly False, H.style "width" "2em" ]
             [ Html.text
                 (if model.paused then
                     "▶"
@@ -169,7 +169,7 @@ view model =
                 )
             ]
         , svg
-            [ Svg.Attributes.style "position:fixed; top: 50px; left:0; height:100%; width:100%"
+            [ Svg.Attributes.style "height:100%; width:100%"
             , Mouse.onDown MouseDownEvent
             , Mouse.onMove MouseMoveEvent
             , Mouse.onUp MouseUpEvent
