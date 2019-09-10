@@ -5,6 +5,7 @@ import Browser.Events
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
+import Html.Events.Extra.Mouse as Mouse
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
 import Svg exposing (..)
@@ -37,6 +38,7 @@ type alias Model =
     , x0 : Vec2
     , acc : Vec2
     , paused : Bool
+    , line : Maybe ( Mouse.Event, Mouse.Event )
     }
 
 
@@ -57,7 +59,7 @@ init _ =
         acc =
             accFromV v0
     in
-    ( Model Nothing 0 v0 x0 acc False
+    ( Model Nothing 0 v0 x0 acc False Nothing
     , Task.perform SetTime Time.now
     )
 
@@ -70,6 +72,10 @@ type Msg
     = Tick Time.Posix
     | SetTime Time.Posix
     | Pause Bool
+    | MouseDownEvent Mouse.Event
+    | MouseMoveEvent Mouse.Event
+    | MouseUpEvent Mouse.Event
+    | MouseLeaveEvent Mouse.Event
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -93,6 +99,18 @@ update msg model =
 
         Pause paused ->
             ( { model | paused = not paused }, Cmd.none )
+
+        MouseDownEvent event ->
+            ( { model | line = Just ( event, event ) }, Cmd.none )
+
+        MouseMoveEvent event ->
+            ( { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, event )) }, Cmd.none )
+
+        MouseUpEvent event ->
+            ( { model | line = Nothing }, Cmd.none )
+
+        MouseLeaveEvent event ->
+            ( { model | line = Nothing }, Cmd.none )
 
 
 
@@ -150,8 +168,14 @@ view model =
                     "⏸"
                 )
             ]
-        , svg [ Svg.Attributes.style "position:fixed; top: 50px; left:0; height:100%; width:100%" ]
-            [ Svg.circle
+        , svg
+            [ Svg.Attributes.style "position:fixed; top: 50px; left:0; height:100%; width:100%"
+            , Mouse.onDown MouseDownEvent
+            , Mouse.onMove MouseMoveEvent
+            , Mouse.onUp MouseUpEvent
+            , Mouse.onLeave MouseLeaveEvent
+            ]
+            ([ Svg.circle
                 [ cx xString
                 , cy yString
                 , r "10"
@@ -168,7 +192,30 @@ view model =
                     ]
                     []
                 ]
-            ]
+             ]
+                ++ (model.line
+                        |> Maybe.map
+                            (\( s, e ) ->
+                                let
+                                    ( posX1, posY1 ) =
+                                        s.offsetPos
+
+                                    ( posX2, posY2 ) =
+                                        e.offsetPos
+                                in
+                                [ Svg.line
+                                    [ x1 (posX1 |> String.fromFloat)
+                                    , y1 (posY1 |> String.fromFloat)
+                                    , x2 (posX2 |> String.fromFloat)
+                                    , y2 (posY2 |> String.fromFloat)
+                                    , stroke "black"
+                                    ]
+                                    []
+                                ]
+                            )
+                        |> Maybe.withDefault []
+                   )
+            )
         ]
 
 
