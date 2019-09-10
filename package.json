@@ -6,6 +6,7 @@
   "author": "Steven Henry Klaiber Noble <steven.noble@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "cssnano": "^4.1.10",
     "elm-hot": "^1.1.2",
     "node-elm-compiler": "^5.0.4"
   },
