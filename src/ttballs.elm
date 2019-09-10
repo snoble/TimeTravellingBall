@@ -101,7 +101,13 @@ update msg model =
             ( { model | paused = not paused }, Cmd.none )
 
         MouseDownEvent event ->
-            ( if event.isPrimary then { model | line = Just ( event, event ) } else model, Cmd.none )
+            ( if event.isPrimary then
+                { model | line = Just ( event, event ) }
+
+              else
+                model
+            , Cmd.none
+            )
 
         MouseMoveEvent event ->
             ( if event.isPrimary then
@@ -180,7 +186,6 @@ view model =
         , H.style "grid-template-rows" "max-content max-content 1fr"
         , H.style "height" "100%"
         , H.style "width" "100%"
-        , H.style "touch-action" "none"
         ]
         [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
         , button [ onClick (Pause model.paused), H.readonly False, H.style "width" "2em" ]
