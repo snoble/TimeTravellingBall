@@ -1,3 +1,4 @@
 [submodule "dependencies/elm-pep"]
 	path = dependencies/elm-pep
-	url = https://github.com/mpizenberg/elm-pep
+	url = https://github.com/snoble/elm-pep
+	branch = sha-071616d75ca61e261fdefc7b55bc46c34e44ea22
