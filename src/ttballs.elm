@@ -33,7 +33,7 @@ main =
 
 type alias Model =
     { t0 : Maybe Time.Posix
-    , relativeTime : Float
+    , relativeTime : Int
     , v0 : Vec2
     , x0 : Vec2
     , acc : Vec2
@@ -51,7 +51,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v0 =
-            vec2 0.2 0.4
+            vec2 0.3 0.35
 
         x0 =
             vec2 15 15
@@ -85,7 +85,7 @@ update msg model =
             let
                 newModel =
                     model.t0
-                        |> Maybe.map (\t0 -> { model | relativeTime = (Time.posixToMillis newTime - Time.posixToMillis t0) |> toFloat })
+                        |> Maybe.map (\t0 -> { model | relativeTime = Time.posixToMillis newTime - Time.posixToMillis t0 })
                         |> Maybe.withDefault model
             in
             ( newModel
@@ -98,7 +98,11 @@ update msg model =
             )
 
         Pause paused ->
-            ( { model | paused = not paused }, Cmd.none )
+            if paused then
+                ( { model | paused = not paused, t0 = Nothing }, Task.perform SetTime (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
+
+            else
+                ( { model | paused = not paused, t0 = Nothing }, Cmd.none )
 
         MouseDownEvent event ->
             ( if event.isPrimary then
@@ -176,10 +180,10 @@ view model =
             model.x0 |> Math.Vector2.getX |> round |> String.fromInt
 
         maxRange =
-            ceiling duration
+            (ceiling (duration / 1000.0)) * 1000
 
         relTimeString =
-            Basics.min model.relativeTime (maxRange |> toFloat) |> String.fromFloat
+            Basics.min model.relativeTime maxRange |> String.fromInt
     in
     div
         [ H.style "display" "grid"
