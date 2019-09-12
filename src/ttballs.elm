@@ -5,7 +5,7 @@ import Browser.Events
 import Debug
 import Html exposing (..)
 import Html.Attributes as H
-import Html.Events exposing (onClick)
+import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
@@ -77,6 +77,7 @@ type Msg
     | MouseMoveEvent Mouse.Event
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
+    | ChangeRelativeTime (Maybe Int)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -94,13 +95,13 @@ update msg model =
             )
 
         Play t ->
-            ( { model | playTime = Just t }
+            ( { model | playTime = Just (Time.posixToMillis t - model.relativeTime |> Time.millisToPosix) }
             , Cmd.none
             )
 
         Pause paused ->
             if paused then
-                ( { model | paused = not paused, playTime = Nothing }, Task.perform Play (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
+                ( { model | paused = not paused, playTime = Nothing }, Task.perform Play Time.now )
 
             else
                 ( { model | paused = not paused, playTime = Nothing }, Cmd.none )
@@ -140,6 +141,21 @@ update msg model =
                 model
             , Cmd.none
             )
+
+        ChangeRelativeTime rtw ->
+            case rtw of
+                Just rt ->
+                    ( { model | relativeTime = rt }
+                    , case model.playTime of
+                        Just _ ->
+                            Task.perform Play Time.now
+
+                        Nothing ->
+                            Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
 
 
@@ -183,7 +199,15 @@ view model =
         , H.style "height" "100%"
         , H.style "width" "100%"
         ]
-        [ input [ H.type_ "range", H.min "0", H.max (duration |> ceiling |> String.fromInt), H.value relTimeString, H.readonly model.paused ] []
+        [ input
+            [ H.type_ "range"
+            , H.min "0"
+            , H.max (duration |> ceiling |> String.fromInt)
+            , H.value relTimeString
+            , H.readonly model.paused
+            , onInput (String.toInt >> ChangeRelativeTime)
+            ]
+            []
         , button [ onClick (Pause model.paused), H.readonly False, H.style "width" "2em" ]
             [ Html.text
                 (if model.paused then
