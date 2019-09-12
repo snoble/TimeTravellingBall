@@ -2,6 +2,7 @@ module Main exposing (..)
 
 import Browser
 import Browser.Events
+import Debug
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick)
@@ -32,9 +33,8 @@ main =
 
 
 type alias Model =
-    { t0 : Maybe Time.Posix
-    , relativeTime : Int
-    , playTime : Maybe Int
+    { relativeTime : Int
+    , playTime : Maybe Time.Posix
     , v0 : Vec2
     , x0 : Vec2
     , acc : Vec2
@@ -55,12 +55,12 @@ init _ =
             vec2 0.3 0.35
 
         x0 =
-            vec2 15 15
+            vec2 100 100
 
         acc =
             accFromV v0
     in
-    ( Model Nothing 0 Nothing v0 x0 acc False Nothing
+    ( Model 0 Nothing v0 x0 acc False Nothing
     , Task.perform Play Time.now
     )
 
@@ -85,7 +85,7 @@ update msg model =
         Tick newTime ->
             let
                 newModel =
-                    model.t0
+                    model.playTime
                         |> Maybe.map (\t0 -> { model | relativeTime = Time.posixToMillis newTime - Time.posixToMillis t0 })
                         |> Maybe.withDefault model
             in
@@ -94,16 +94,16 @@ update msg model =
             )
 
         Play t ->
-            ( { model | t0 = Just t , playTime = Just (Time.posixToMillis t + model.relativeTime)}
+            ( { model | playTime = Just t }
             , Cmd.none
             )
 
         Pause paused ->
             if paused then
-                ( { model | paused = not paused, t0 = Nothing }, Task.perform Play (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
+                ( { model | paused = not paused, playTime = Nothing }, Task.perform Play (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
 
             else
-                ( { model | paused = not paused, t0 = Nothing }, Cmd.none )
+                ( { model | paused = not paused, playTime = Nothing }, Cmd.none )
 
         MouseDownEvent event ->
             ( if event.isPrimary then
@@ -155,6 +155,7 @@ subscriptions model =
         Browser.Events.onAnimationFrame Tick
 
 
+
 -- VIEW
 
 
@@ -162,25 +163,16 @@ view : Model -> Html Msg
 view model =
     let
         duration =
-            Math.Vector2.length model.v0 / Math.Vector2.length model.acc
+            Math.Vector2.length model.v0 / 0.0001
 
         endPos =
-            model.x0 |> add (model.v0 |> Math.Vector2.scale duration) |> add (model.acc |> Math.Vector2.scale ((duration ^ 2) * 0.5))
+            posAtT model.x0 duration model.v0 0.0001
 
         movements =
-            [ { endPos = endPos, endTime = duration |> round, velocityRatio = 0 } ]
-
-        stringArgs =
-            movementsToSvgPath model.x0 movements
-
-        xString =
-            model.x0 |> Math.Vector2.getX |> round |> String.fromInt
-
-        yString =
-            model.x0 |> Math.Vector2.getX |> round |> String.fromInt
+            [ { endPos = endPos, startVelocity = model.v0, duration = duration } ]
 
         maxRange =
-            (ceiling (duration / 1000.0)) * 1000
+            ceiling (duration / 1000.0) * 1000
 
         relTimeString =
             Basics.min model.relativeTime maxRange |> String.fromInt
@@ -208,24 +200,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ([ Svg.circle
-                [ cx xString
-                , cy yString
-                , r "10"
-                , fill "red"
-                ]
-                [ Svg.animateMotion
-                    [ Svg.Attributes.path stringArgs.path
-                    , keyPoints stringArgs.keyPoints
-                    , keyTimes stringArgs.keyTimes
-                    , keySplines stringArgs.keySplines
-                    , calcMode "spline"
-                    , fill "freeze"
-                    , dur stringArgs.dur
-                    ]
-                    []
-                ]
-             ]
+            ([ svgCircle model.x0 movements (model.relativeTime |> toFloat) -0.0001 ]
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
@@ -252,111 +227,59 @@ view model =
         ]
 
 
+posAtT startPos t v decelCoef =
+    if Math.Vector2.lengthSquared v > 0.0 then
+        let
+            acc =
+                accFromV v
+        in
+        startPos
+            |> Math.Vector2.add (Math.Vector2.scale t v)
+            |> Math.Vector2.add (Math.Vector2.scale ((t ^ 2.0) / 2.0) acc)
+
+    else
+        startPos
+
+
+svgCircle : Vec2 -> List BallMovement -> Float -> Float -> Svg Msg
+svgCircle initialPos movements time decelCoef =
+    let
+        { t, startPos, v, done } =
+            movements
+                |> List.foldl
+                    (\mvmt ->
+                        \state ->
+                            if state.done then
+                                state
+
+                            else if state.t >= mvmt.duration then
+                                { t = state.t - mvmt.duration, startPos = mvmt.endPos, v = state.v, done = False }
+
+                            else
+                                { t = state.t, startPos = state.startPos, v = mvmt.startVelocity, done = True }
+                    )
+                    { t = time, startPos = initialPos, v = vec2 0.0 0.0, done = False }
+
+        pos =
+            posAtT startPos t v decelCoef
+
+        xString =
+            pos |> Math.Vector2.getX |> round |> String.fromInt
+
+        yString =
+            pos |> Math.Vector2.getY |> round |> String.fromInt
+    in
+    Svg.circle
+        [ cx xString
+        , cy yString
+        , r "10"
+        , fill "blue"
+        ]
+        []
+
+
 type alias BallMovement =
     { endPos : Vec2
-    , endTime : Int
-    , velocityRatio : Float
-    }
-
-
-type alias SvgMotion =
-    { path : String
-    , keyPoints : String
-    , keyTimes : String
-    , keySplines : String
-    , dur : String
-    }
-
-circle : Vec2 -> Vec2 -> Vec2 -> Int -> Maybe Int -> Int
-circle x0 v0 acc relativeTime playTime = case playTime of
-    Just pt -> 2
-        
-
-    Nothing -> 2
-        
-
-movementsToSvgPath : Vec2 -> List BallMovement -> SvgMotion
-movementsToSvgPath startPos movements =
-    let
-        totals =
-            movements
-                |> List.foldl
-                    (\move ->
-                        \{ distance, duration, lastPos } ->
-                            { distance = distance + Math.Vector2.distance lastPos move.endPos
-                            , duration = move.endTime
-                            , lastPos = move.endPos
-                            }
-                    )
-                    { distance = 0, duration = 0, lastPos = startPos }
-
-        distanceT =
-            totals.distance
-
-        durationT =
-            totals.duration
-
-        lists =
-            movements
-                |> List.foldl
-                    (\move ->
-                        \{ path, keyPoints, keyTimes, keySplines, lastPos, lastTime } ->
-                            { path = move.endPos :: path
-                            , keyPoints =
-                                let
-                                    kpDiff =
-                                        if distanceT > 0 then
-                                            Math.Vector2.distance lastPos move.endPos / distanceT
-
-                                        else
-                                            1.0
-
-                                    kp =
-                                        kpDiff + (keyPoints |> List.head |> Maybe.withDefault 0.0)
-                                in
-                                kp :: keyPoints
-                            , keyTimes =
-                                let
-                                    ktDiff =
-                                        if durationT > 0 then
-                                            toFloat (move.endTime - lastTime) / toFloat durationT
-
-                                        else
-                                            1.0
-
-                                    kt =
-                                        ktDiff + (keyTimes |> List.head |> Maybe.withDefault 0.0)
-                                in
-                                kt :: keyTimes
-                            , keySplines =
-                                let
-                                    v =
-                                        vec2 (1.0 / 3.0) (2.0 / (3.0 * (1.0 + move.velocityRatio)))
-
-                                    spline =
-                                        ( v, Math.Vector2.add v (vec2 (1.0 / 3.0) (1.0 / 3.0)) )
-                                in
-                                spline :: keySplines
-                            , lastPos = move.endPos
-                            , lastTime = move.endTime
-                            }
-                    )
-                    { path = [ startPos ], keyPoints = [ 0.0 ], keyTimes = [ 0.0 ], keySplines = [], lastPos = startPos, lastTime = 0 }
-    in
-    { path =
-        "M"
-            :: (lists.path
-                    |> List.reverse
-                    |> List.map (\v -> [ getX v, getY v ] |> List.map (round >> String.fromInt) |> String.join " ")
-                    |> List.intersperse "L"
-               )
-            |> String.join " "
-    , keyPoints = lists.keyPoints |> List.reverse |> List.map String.fromFloat |> String.join ";"
-    , keyTimes = lists.keyTimes |> List.reverse |> List.map String.fromFloat |> String.join ";"
-    , keySplines =
-        lists.keySplines
-            |> List.reverse
-            |> List.map (\( v1, v2 ) -> [ getX v1, getY v1, getX v2, getY v2 ] |> List.map String.fromFloat |> String.join " ")
-            |> String.join " ; "
-    , dur = String.concat [ totals.duration |> String.fromInt, "ms" ]
+    , startVelocity : Vec2
+    , duration : Float
     }
