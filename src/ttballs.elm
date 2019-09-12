@@ -34,6 +34,7 @@ main =
 type alias Model =
     { t0 : Maybe Time.Posix
     , relativeTime : Int
+    , playTime : Maybe Int
     , v0 : Vec2
     , x0 : Vec2
     , acc : Vec2
@@ -59,8 +60,8 @@ init _ =
         acc =
             accFromV v0
     in
-    ( Model Nothing 0 v0 x0 acc False Nothing
-    , Task.perform SetTime Time.now
+    ( Model Nothing 0 Nothing v0 x0 acc False Nothing
+    , Task.perform Play Time.now
     )
 
 
@@ -70,7 +71,7 @@ init _ =
 
 type Msg
     = Tick Time.Posix
-    | SetTime Time.Posix
+    | Play Time.Posix
     | Pause Bool
     | MouseDownEvent Mouse.Event
     | MouseMoveEvent Mouse.Event
@@ -92,14 +93,14 @@ update msg model =
             , Cmd.none
             )
 
-        SetTime t ->
-            ( { model | t0 = Just t }
+        Play t ->
+            ( { model | t0 = Just t , playTime = Just (Time.posixToMillis t + model.relativeTime)}
             , Cmd.none
             )
 
         Pause paused ->
             if paused then
-                ( { model | paused = not paused, t0 = Nothing }, Task.perform SetTime (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
+                ( { model | paused = not paused, t0 = Nothing }, Task.perform Play (Time.now |> Task.map (Time.posixToMillis >> (\t -> t - model.relativeTime) >> Time.millisToPosix)) )
 
             else
                 ( { model | paused = not paused, t0 = Nothing }, Cmd.none )
@@ -152,7 +153,6 @@ subscriptions model =
 
     else
         Browser.Events.onAnimationFrame Tick
-
 
 
 -- VIEW
@@ -267,6 +267,13 @@ type alias SvgMotion =
     , dur : String
     }
 
+circle : Vec2 -> Vec2 -> Vec2 -> Int -> Maybe Int -> Int
+circle x0 v0 acc relativeTime playTime = case playTime of
+    Just pt -> 2
+        
+
+    Nothing -> 2
+        
 
 movementsToSvgPath : Vec2 -> List BallMovement -> SvgMotion
 movementsToSvgPath startPos movements =
