@@ -28,9 +28,20 @@ main =
         }
 
 
+type alias VelAcc =
+    { v : Vec2
+    , a : Vec2
+    , stopTime : Float
+    }
+
+
+vaZero =
+    VelAcc (vec2 0.0 0.0) (vec2 0.0 0.0) 0.0
+
+
 type alias BallMovement =
     { endPos : Vec2
-    , startVelocity : Vec2
+    , startVelocity : VelAcc
     , duration : Float
     }
 
@@ -38,7 +49,7 @@ type alias BallMovement =
 type alias BallPosition =
     { t : Float
     , x : Vec2
-    , v : Vec2
+    , va : VelAcc
     }
 
 
@@ -115,13 +126,22 @@ nextChanges positions =
                         \pos ->
                             let
                                 stopTime =
-                                    pos.t + (Math.Vector2.length pos.v / 0.0001)
+                                    pos.t + pos.va.stopTime
                             in
                             IndexedBallPosition idx pos stopTime
                     )
                 |> List.foldl collisionCandidates []
     in
     ( [], [] )
+
+
+avFromV : Vec2 -> VelAcc
+avFromV v =
+    if Math.Vector2.length v == 0.0 then
+        vaZero
+
+    else
+        VelAcc v (accFromV v) (Math.Vector2.length v / 0.0001)
 
 
 accFromV : Vec2 -> Vec2
@@ -132,11 +152,14 @@ accFromV =
 movementFrom : Vec2 -> Vec2 -> BallMovement
 movementFrom x0 v0 =
     let
+        va =
+            avFromV v0
+
         duration =
-            Math.Vector2.length v0 / 0.0001
+            va.stopTime
     in
-    { endPos = posAtT x0 duration v0 0.0001
-    , startVelocity = v0
+    { endPos = posAtT x0 duration va
+    , startVelocity = va
     , duration = duration
     }
 
@@ -338,7 +361,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgCircle ball (model.relativeTime |> toFloat) -0.0001))
+            ((model.balls |> List.concatMap (\ball -> svgCircle ball (model.relativeTime |> toFloat)))
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
@@ -365,22 +388,22 @@ view model =
         ]
 
 
-posAtT startPos t v decelCoef =
-    if Math.Vector2.lengthSquared v > 0.0 then
-        let
-            acc =
-                accFromV v
-        in
-        startPos
-            |> Math.Vector2.add (Math.Vector2.scale t v)
-            |> Math.Vector2.add (Math.Vector2.scale ((t ^ 2.0) / 2.0) acc)
+posAtT : Vec2 -> Float -> VelAcc -> Vec2
+posAtT startPos t va =
+    let
+        acc =
+            va.a
 
-    else
-        startPos
+        v =
+            va.v
+    in
+    startPos
+        |> Math.Vector2.add (Math.Vector2.scale t v)
+        |> Math.Vector2.add (Math.Vector2.scale ((t ^ 2.0) / 2.0) acc)
 
 
-svgCircle : Ball -> Float -> Float -> List (Svg Msg)
-svgCircle ball time decelCoef =
+svgCircle : Ball -> Float -> List (Svg Msg)
+svgCircle ball time =
     if time < ball.initTime then
         []
 
@@ -392,7 +415,7 @@ svgCircle ball time decelCoef =
             movements =
                 ball.movements |> Maybe.withDefault []
 
-            { t, startPos, v, done } =
+            { t, startPos, va, done } =
                 movements
                     |> List.foldl
                         (\mvmt ->
@@ -401,15 +424,15 @@ svgCircle ball time decelCoef =
                                     state
 
                                 else if state.t >= mvmt.duration then
-                                    { t = state.t - mvmt.duration, startPos = mvmt.endPos, v = state.v, done = False }
+                                    { t = state.t - mvmt.duration, startPos = mvmt.endPos, va = state.va, done = False }
 
                                 else
-                                    { t = state.t, startPos = state.startPos, v = mvmt.startVelocity, done = True }
+                                    { t = state.t, startPos = state.startPos, va = mvmt.startVelocity, done = True }
                         )
-                        { t = timeAdjusted, startPos = ball.initPosition, v = vec2 0.0 0.0, done = False }
+                        { t = timeAdjusted, startPos = ball.initPosition, va = vaZero, done = False }
 
             pos =
-                posAtT startPos t v decelCoef
+                posAtT startPos t va
 
             xString =
                 pos |> Math.Vector2.getX |> round |> String.fromInt
