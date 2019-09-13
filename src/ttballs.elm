@@ -133,13 +133,22 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v0 =
-            vec2 0.3 0.35
+            vec2 0.2 0.3
+
+        v1 =
+            vec2 0.1 -0.35
 
         x0 =
             vec2 100 100
 
+        x1 =
+            vec2 100 800
+
         dur =
             Math.Vector2.length v0 / 0.0001
+
+        dur1 =
+            Math.Vector2.length v1 / 0.0001
 
         balls =
             [ { color = "red"
@@ -150,6 +159,17 @@ init _ =
                         [ { endPos = posAtT x0 dur v0 0.0
                           , startVelocity = v0
                           , duration = dur
+                          }
+                        ]
+              }
+            , { color = "blue"
+              , initPosition = x1
+              , initTime = 500.0
+              , movements =
+                    Just
+                        [ { endPos = posAtT x1 dur1 v1 0.0
+                          , startVelocity = v1
+                          , duration = dur1
                           }
                         ]
               }
@@ -330,7 +350,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgCircle ball.initTime ball.initPosition (ball.movements |> Maybe.withDefault []) (model.relativeTime |> toFloat) -0.0001))
+            ((model.balls |> List.concatMap (\ball -> svgCircle ball (model.relativeTime |> toFloat) -0.0001))
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
@@ -371,15 +391,18 @@ posAtT startPos t v decelCoef =
         startPos
 
 
-svgCircle : Float -> Vec2 -> List BallMovement -> Float -> Float -> List (Svg Msg)
-svgCircle initialTime initialPos movements time decelCoef =
-    if time < initialTime then
+svgCircle : Ball -> Float -> Float -> List (Svg Msg)
+svgCircle ball time decelCoef =
+    if time < ball.initTime then
         []
 
     else
         let
             timeAdjusted =
-                time - initialTime
+                time - ball.initTime
+
+            movements =
+                ball.movements |> Maybe.withDefault []
 
             { t, startPos, v, done } =
                 movements
@@ -395,7 +418,7 @@ svgCircle initialTime initialPos movements time decelCoef =
                                 else
                                     { t = state.t, startPos = state.startPos, v = mvmt.startVelocity, done = True }
                         )
-                        { t = timeAdjusted, startPos = initialPos, v = vec2 0.0 0.0, done = False }
+                        { t = timeAdjusted, startPos = ball.initPosition, v = vec2 0.0 0.0, done = False }
 
             pos =
                 posAtT startPos t v decelCoef
@@ -410,7 +433,7 @@ svgCircle initialTime initialPos movements time decelCoef =
             [ cx xString
             , cy yString
             , r "10"
-            , fill "blue"
+            , fill ball.color
             ]
             []
         ]
