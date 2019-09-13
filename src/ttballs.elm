@@ -129,48 +129,36 @@ accFromV =
     normalize >> Math.Vector2.scale -0.0001
 
 
+movementFrom : Vec2 -> Vec2 -> BallMovement
+movementFrom x0 v0 =
+    let
+        duration =
+            Math.Vector2.length v0 / 0.0001
+    in
+    { endPos = posAtT x0 duration v0 0.0001
+    , startVelocity = v0
+    , duration = duration
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
-        v0 =
-            vec2 0.2 0.3
-
-        v1 =
-            vec2 0.1 -0.35
-
-        x0 =
-            vec2 100 100
-
-        x1 =
-            vec2 100 800
-
-        dur =
-            Math.Vector2.length v0 / 0.0001
-
-        dur1 =
-            Math.Vector2.length v1 / 0.0001
-
         balls =
             [ { color = "red"
-              , initPosition = x0
+              , initPosition = vec2 100 100
               , initTime = 1500.0
               , movements =
                     Just
-                        [ { endPos = posAtT x0 dur v0 0.0
-                          , startVelocity = v0
-                          , duration = dur
-                          }
+                        [ movementFrom (vec2 100 100) (vec2 0.2 0.3)
                         ]
               }
             , { color = "blue"
-              , initPosition = x1
+              , initPosition = vec2 100 800
               , initTime = 500.0
               , movements =
                     Just
-                        [ { endPos = posAtT x1 dur1 v1 0.0
-                          , startVelocity = v1
-                          , duration = dur1
-                          }
+                        [ movementFrom (vec2 100 800) (vec2 0.1 -0.35)
                         ]
               }
             ]
