@@ -44,7 +44,8 @@ type alias BallPosition =
 
 type alias Ball =
     { color : String
-    , init : BallPosition
+    , initPosition : Vec2
+    , initTime : Float
     , movements : Maybe (List BallMovement)
     }
 
@@ -142,7 +143,8 @@ init _ =
 
         balls =
             [ { color = "red"
-              , init = BallPosition 1500.0 x0 v0
+              , initPosition = x0
+              , initTime = 1500.0
               , movements =
                     Just
                         [ { endPos = posAtT x0 dur v0 0.0
@@ -160,7 +162,7 @@ init _ =
                         \maxDur ->
                             ball.movements
                                 |> Maybe.withDefault []
-                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.init.t
+                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
                     )
                     0.0
     in
@@ -328,7 +330,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgCircle ball.init.t ball.init.x (ball.movements |> Maybe.withDefault []) (model.relativeTime |> toFloat) -0.0001))
+            ((model.balls |> List.concatMap (\ball -> svgCircle ball.initTime ball.initPosition (ball.movements |> Maybe.withDefault []) (model.relativeTime |> toFloat) -0.0001))
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
