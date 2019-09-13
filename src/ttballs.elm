@@ -28,6 +28,87 @@ main =
         }
 
 
+type alias BallMovement =
+    { endPos : Vec2
+    , startVelocity : Vec2
+    , duration : Float
+    }
+
+
+type alias BallPosition =
+    { t : Float
+    , x : Vec2
+    , v : Vec2
+    }
+
+
+type alias Ball =
+    { color : String
+    , init : BallPosition
+    , movements : Maybe (List BallMovement)
+    }
+
+
+type alias BallChange =
+    { idx : Int
+    , position : BallPosition
+    }
+
+
+type alias BallCollision =
+    { otherBall : Int
+    , t : Float
+    }
+
+
+type alias IndexedBallPosition =
+    { idx : Int
+    , pos : BallPosition
+    , stopTime : Float
+    }
+
+
+collisionFromPositions : IndexedBallPosition -> IndexedBallPosition -> List BallCollision
+collisionFromPositions position1 position2 =
+    if position1.stopTime < position2.pos.t || position2.stopTime < position1.pos.t then
+        []
+
+    else
+        []
+
+
+collisionCandidates : IndexedBallPosition -> List ( IndexedBallPosition, List BallCollision ) -> List ( IndexedBallPosition, List BallCollision )
+collisionCandidates position otherPositions =
+    let
+        newCollisions =
+            otherPositions
+                |> List.concatMap
+                    (\( otherPosition, otherCollisions ) ->
+                        collisionFromPositions position otherPosition
+                    )
+    in
+    ( position, newCollisions ) :: otherPositions
+
+
+nextChanges : List BallPosition -> ( List BallChange, List BallCollision )
+nextChanges positions =
+    let
+        possibleCollisions =
+            positions
+                |> List.indexedMap
+                    (\idx ->
+                        \pos ->
+                            let
+                                stopTime =
+                                    pos.t + (Math.Vector2.length pos.v / 0.0001)
+                            in
+                            IndexedBallPosition idx pos stopTime
+                    )
+                |> List.foldl collisionCandidates []
+    in
+    ( [], [] )
+
+
 
 -- MODEL
 
@@ -40,6 +121,7 @@ type alias Model =
     , acc : Vec2
     , paused : Bool
     , line : Maybe ( Mouse.Event, Mouse.Event )
+    , balls : List Ball
     }
 
 
@@ -60,7 +142,7 @@ init _ =
         acc =
             accFromV v0
     in
-    ( Model 0 Nothing v0 x0 acc False Nothing
+    ( Model 0 Nothing v0 x0 acc False Nothing []
     , Task.perform Play Time.now
     )
 
@@ -300,10 +382,3 @@ svgCircle initialPos movements time decelCoef =
         , fill "blue"
         ]
         []
-
-
-type alias BallMovement =
-    { endPos : Vec2
-    , startVelocity : Vec2
-    , duration : Float
-    }
