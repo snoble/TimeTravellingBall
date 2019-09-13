@@ -74,6 +74,10 @@ collisionFromPositions position1 position2 =
         []
 
     else
+        let
+            t =
+                Basics.max position1.pos.t position2.pos.t
+        in
         []
 
 
@@ -118,7 +122,7 @@ type alias Model =
     , playTime : Maybe Time.Posix
     , v0 : Vec2
     , x0 : Vec2
-    , acc : Vec2
+    , t0 : Float
     , paused : Bool
     , line : Maybe ( Mouse.Event, Mouse.Event )
     , balls : List Ball
@@ -138,11 +142,8 @@ init _ =
 
         x0 =
             vec2 100 100
-
-        acc =
-            accFromV v0
     in
-    ( Model 0 Nothing v0 x0 acc False Nothing []
+    ( Model 0 Nothing v0 x0 1500.0 False Nothing []
     , Task.perform Play Time.now
     )
 
@@ -260,6 +261,17 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     let
+        dur =
+            model.balls
+                |> List.foldl
+                    (\ball ->
+                        \maxDur ->
+                            ball.movements
+                                |> Maybe.withDefault []
+                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.init.t
+                    )
+                    0.0
+
         duration =
             Math.Vector2.length model.v0 / 0.0001
 
@@ -270,7 +282,7 @@ view model =
             [ { endPos = endPos, startVelocity = model.v0, duration = duration } ]
 
         maxRange =
-            ceiling (duration / 1000.0) * 1000
+            ceiling ((duration + model.t0) / 1000.0) * 1000
 
         relTimeString =
             Basics.min model.relativeTime maxRange |> String.fromInt
@@ -306,7 +318,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ([ svgCircle model.x0 movements (model.relativeTime |> toFloat) -0.0001 ]
+            (svgCircle model.t0 model.x0 movements (model.relativeTime |> toFloat) -0.0001
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
@@ -347,38 +359,46 @@ posAtT startPos t v decelCoef =
         startPos
 
 
-svgCircle : Vec2 -> List BallMovement -> Float -> Float -> Svg Msg
-svgCircle initialPos movements time decelCoef =
-    let
-        { t, startPos, v, done } =
-            movements
-                |> List.foldl
-                    (\mvmt ->
-                        \state ->
-                            if state.done then
-                                state
-
-                            else if state.t >= mvmt.duration then
-                                { t = state.t - mvmt.duration, startPos = mvmt.endPos, v = state.v, done = False }
-
-                            else
-                                { t = state.t, startPos = state.startPos, v = mvmt.startVelocity, done = True }
-                    )
-                    { t = time, startPos = initialPos, v = vec2 0.0 0.0, done = False }
-
-        pos =
-            posAtT startPos t v decelCoef
-
-        xString =
-            pos |> Math.Vector2.getX |> round |> String.fromInt
-
-        yString =
-            pos |> Math.Vector2.getY |> round |> String.fromInt
-    in
-    Svg.circle
-        [ cx xString
-        , cy yString
-        , r "10"
-        , fill "blue"
-        ]
+svgCircle : Float -> Vec2 -> List BallMovement -> Float -> Float -> List (Svg Msg)
+svgCircle initialTime initialPos movements time decelCoef =
+    if time < initialTime then
         []
+
+    else
+        let
+            timeAdjusted =
+                time - initialTime
+
+            { t, startPos, v, done } =
+                movements
+                    |> List.foldl
+                        (\mvmt ->
+                            \state ->
+                                if state.done then
+                                    state
+
+                                else if state.t >= mvmt.duration then
+                                    { t = state.t - mvmt.duration, startPos = mvmt.endPos, v = state.v, done = False }
+
+                                else
+                                    { t = state.t, startPos = state.startPos, v = mvmt.startVelocity, done = True }
+                        )
+                        { t = timeAdjusted, startPos = initialPos, v = vec2 0.0 0.0, done = False }
+
+            pos =
+                posAtT startPos t v decelCoef
+
+            xString =
+                pos |> Math.Vector2.getX |> round |> String.fromInt
+
+            yString =
+                pos |> Math.Vector2.getY |> round |> String.fromInt
+        in
+        [ Svg.circle
+            [ cx xString
+            , cy yString
+            , r "10"
+            , fill "blue"
+            ]
+            []
+        ]
