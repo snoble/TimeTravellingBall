@@ -68,6 +68,16 @@ type alias IndexedBallPosition =
     }
 
 
+type alias Model =
+    { relativeTime : Int
+    , playTime : Maybe Time.Posix
+    , paused : Bool
+    , line : Maybe ( Mouse.Event, Mouse.Event )
+    , balls : List Ball
+    , duration : Float
+    }
+
+
 collisionFromPositions : IndexedBallPosition -> IndexedBallPosition -> List BallCollision
 collisionFromPositions position1 position2 =
     if position1.stopTime < position2.pos.t || position2.stopTime < position1.pos.t then
@@ -113,22 +123,6 @@ nextChanges positions =
     ( [], [] )
 
 
-
--- MODEL
-
-
-type alias Model =
-    { relativeTime : Int
-    , playTime : Maybe Time.Posix
-    , v0 : Vec2
-    , x0 : Vec2
-    , t0 : Float
-    , paused : Bool
-    , line : Maybe ( Mouse.Event, Mouse.Event )
-    , balls : List Ball
-    }
-
-
 accFromV : Vec2 -> Vec2
 accFromV =
     normalize >> Math.Vector2.scale -0.0001
@@ -142,8 +136,41 @@ init _ =
 
         x0 =
             vec2 100 100
+
+        dur =
+            Math.Vector2.length v0 / 0.0001
+
+        balls =
+            [ { color = "red"
+              , init = BallPosition 1500.0 x0 v0
+              , movements =
+                    Just
+                        [ { endPos = posAtT x0 dur v0 0.0
+                          , startVelocity = v0
+                          , duration = dur
+                          }
+                        ]
+              }
+            ]
+
+        duration =
+            balls
+                |> List.foldl
+                    (\ball ->
+                        \maxDur ->
+                            ball.movements
+                                |> Maybe.withDefault []
+                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.init.t
+                    )
+                    0.0
     in
-    ( Model 0 Nothing v0 x0 1500.0 False Nothing []
+    ( { relativeTime = 0
+      , playTime = Nothing
+      , paused = False
+      , line = Nothing
+      , balls = balls
+      , duration = duration
+      }
     , Task.perform Play Time.now
     )
 
@@ -261,28 +288,11 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     let
-        dur =
-            model.balls
-                |> List.foldl
-                    (\ball ->
-                        \maxDur ->
-                            ball.movements
-                                |> Maybe.withDefault []
-                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.init.t
-                    )
-                    0.0
-
         duration =
-            Math.Vector2.length model.v0 / 0.0001
-
-        endPos =
-            posAtT model.x0 duration model.v0 0.0001
-
-        movements =
-            [ { endPos = endPos, startVelocity = model.v0, duration = duration } ]
+            model.duration
 
         maxRange =
-            ceiling ((duration + model.t0) / 1000.0) * 1000
+            ceiling (duration / 1000.0) * 1000
 
         relTimeString =
             Basics.min model.relativeTime maxRange |> String.fromInt
@@ -318,7 +328,7 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            (svgCircle model.t0 model.x0 movements (model.relativeTime |> toFloat) -0.0001
+            ((model.balls |> List.concatMap (\ball -> svgCircle ball.init.t ball.init.x (ball.movements |> Maybe.withDefault []) (model.relativeTime |> toFloat) -0.0001))
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
