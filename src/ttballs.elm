@@ -1,7 +1,9 @@
 module Main exposing (..)
 
+import Aberth exposing (solve)
 import Browser
 import Browser.Events
+import Complex exposing (toCartesian)
 import Debug
 import Html exposing (..)
 import Html.Attributes as H
@@ -68,7 +70,8 @@ type alias BallChange =
 
 
 type alias BallCollision =
-    { otherBall : Int
+    { ball1 : Int
+    , ball2 : Int
     , t : Float
     }
 
@@ -76,7 +79,7 @@ type alias BallCollision =
 type alias IndexedBallPosition =
     { idx : Int
     , pos : BallPosition
-    , stopTime : Float
+    , absoluteStopTime : Float
     }
 
 
@@ -87,20 +90,64 @@ type alias Model =
     , line : Maybe ( Mouse.Event, Mouse.Event )
     , balls : List Ball
     , duration : Float
+    , collisions : List BallCollision
     }
 
 
-collisionFromPositions : IndexedBallPosition -> IndexedBallPosition -> List BallCollision
-collisionFromPositions position1 position2 =
-    if position1.stopTime < position2.pos.t || position2.stopTime < position1.pos.t then
+zeroTimePosition : BallPosition -> BallPosition
+zeroTimePosition pos =
+    ballPosAtT pos 0.0
+
+
+collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> List BallCollision
+collisionsFromPositions position1 position2 =
+    if position1.absoluteStopTime < position2.pos.t || position2.absoluteStopTime < position1.pos.t then
         []
 
     else
         let
-            t =
-                Basics.max position1.pos.t position2.pos.t
+            ztPos1 =
+               zeroTimePosition position1.pos
+
+            ztPos2 =
+                zeroTimePosition position2.pos
+
+            x =
+                Math.Vector2.sub ztPos1.x ztPos2.x
+
+            v =
+                Math.Vector2.sub ztPos1.va.v ztPos2.va.v
+
+            acc =
+                Math.Vector2.sub ztPos1.va.a ztPos2.va.a
+
+            polynomial =
+                [ Math.Vector2.lengthSquared acc / 4.0
+                , Math.Vector2.dot acc v
+                , Math.Vector2.lengthSquared v + Math.Vector2.dot acc x
+                , Math.Vector2.dot v x * 2.0
+                , Math.Vector2.lengthSquared x - 100.0
+                ]
+
+            eps =
+                0.00005
+
+            sols1 =
+                solve polynomial eps
+
+            sols =
+                sols1
+                        |> List.filter
+                            (\c ->
+                                let
+                                    { re, im } =
+                                        c |> toCartesian
+                                in
+                                abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime
+                            )
+                        |> List.map (\c -> BallCollision position1.idx position2.idx (c |> toCartesian).re)
         in
-        []
+        sols
 
 
 collisionCandidates : IndexedBallPosition -> List ( IndexedBallPosition, List BallCollision ) -> List ( IndexedBallPosition, List BallCollision )
@@ -110,7 +157,7 @@ collisionCandidates position otherPositions =
             otherPositions
                 |> List.concatMap
                     (\( otherPosition, otherCollisions ) ->
-                        collisionFromPositions position otherPosition
+                        collisionsFromPositions position otherPosition
                     )
     in
     ( position, newCollisions ) :: otherPositions
@@ -164,27 +211,59 @@ movementFrom x0 v0 =
     }
 
 
+indexedPositionFrom : Vec2 -> Vec2 -> Float -> Int -> IndexedBallPosition
+indexedPositionFrom x v t idx =
+    let
+        va =
+            avFromV v
+    in
+    { idx = idx
+    , pos =
+        { t = t
+        , x = x
+        , va = va
+        }
+    , absoluteStopTime = va.stopTime + t
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
+        v1 =
+            vec2 0.2 0.3
+
+        ball1 =
+            { color = "red"
+            , initPosition = vec2 100 100
+            , initTime = 1500.0
+            , movements =
+                Just
+                    [ movementFrom (vec2 100 100) v1
+                    ]
+            }
+
+        v2 =
+            vec2 0.1 -0.35
+
+        ball2 =
+            { color = "blue"
+            , initPosition = vec2 100 800
+            , initTime = 500.0
+            , movements =
+                Just
+                    [ movementFrom (vec2 100 800) v2
+                    ]
+            }
+
         balls =
-            [ { color = "red"
-              , initPosition = vec2 100 100
-              , initTime = 1500.0
-              , movements =
-                    Just
-                        [ movementFrom (vec2 100 100) (vec2 0.2 0.3)
-                        ]
-              }
-            , { color = "blue"
-              , initPosition = vec2 100 800
-              , initTime = 500.0
-              , movements =
-                    Just
-                        [ movementFrom (vec2 100 800) (vec2 0.1 -0.35)
-                        ]
-              }
-            ]
+            [ ball1, ball2 ]
+
+        pos1 =
+            indexedPositionFrom ball1.initPosition v1 ball1.initTime 1
+
+        pos2 =
+            indexedPositionFrom ball2.initPosition v2 ball2.initTime 2
 
         duration =
             balls
@@ -203,6 +282,7 @@ init _ =
       , line = Nothing
       , balls = balls
       , duration = duration
+      , collisions = Debug.log "collisions" (collisionsFromPositions pos1 pos2)
       }
     , Task.perform Play Time.now
     )
@@ -288,7 +368,7 @@ update msg model =
         ChangeRelativeTime rtw ->
             case rtw of
                 Just rt ->
-                    ( { model | relativeTime = rt }
+                    ( { model | relativeTime = Debug.log "rt" rt }
                     , case model.playTime of
                         Just _ ->
                             Task.perform Play Time.now
@@ -339,7 +419,7 @@ view model =
         [ input
             [ H.type_ "range"
             , H.min "0"
-            , H.max (duration |> ceiling |> String.fromInt)
+            , H.max (maxRange |> String.fromInt)
             , H.value relTimeString
             , H.readonly model.paused
             , onInput (String.toInt >> ChangeRelativeTime)
@@ -400,6 +480,21 @@ posAtT startPos t va =
     startPos
         |> Math.Vector2.add (Math.Vector2.scale t v)
         |> Math.Vector2.add (Math.Vector2.scale ((t ^ 2.0) / 2.0) acc)
+
+
+vaAtT : VelAcc -> Float -> VelAcc
+vaAtT va t =
+    { va
+        | v = va.v |> Math.Vector2.add (Math.Vector2.scale t va.a)
+    }
+
+
+ballPosAtT : BallPosition -> Float -> BallPosition
+ballPosAtT ball t =
+    { t = t
+    , x = posAtT ball.x (t-ball.t) ball.va
+    , va = vaAtT ball.va (t-ball.t)
+    }
 
 
 svgCircle : Ball -> Float -> List (Svg Msg)

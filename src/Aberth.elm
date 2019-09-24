@@ -88,14 +88,14 @@ solve coefs epsilon =
             []
 
         [ an ] ->
-            if abs an < epsilon then
+            if abs an < 0.0000000000001 then
                 [ Complex.zero ]
 
             else
                 []
 
         an :: rest ->
-            if abs an < epsilon then
+            if abs an < 0.0000000000001 then
                 solve rest epsilon
 
             else
