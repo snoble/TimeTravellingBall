@@ -107,7 +107,7 @@ collisionsFromPositions position1 position2 =
     else
         let
             ztPos1 =
-               zeroTimePosition position1.pos
+                zeroTimePosition position1.pos
 
             ztPos2 =
                 zeroTimePosition position2.pos
@@ -126,26 +126,27 @@ collisionsFromPositions position1 position2 =
                 , Math.Vector2.dot acc v
                 , Math.Vector2.lengthSquared v + Math.Vector2.dot acc x
                 , Math.Vector2.dot v x * 2.0
-                , Math.Vector2.lengthSquared x - 100.0
+                , Math.Vector2.lengthSquared x - 400.0
                 ]
 
             eps =
-                0.00005
+                0.001
 
             sols1 =
                 solve polynomial eps
 
             sols =
                 sols1
-                        |> List.filter
-                            (\c ->
-                                let
-                                    { re, im } =
-                                        c |> toCartesian
-                                in
-                                abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime
-                            )
-                        |> List.map (\c -> BallCollision position1.idx position2.idx (c |> toCartesian).re)
+                    |> List.filter
+                        (\c ->
+                            let
+                                { re, im } =
+                                    c |> toCartesian
+                            in
+                            abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime
+                        )
+                    |> List.map (\c -> (c |> toCartesian).re)
+                    |> List.map (\r -> BallCollision position1.idx position2.idx r)
         in
         sols
 
@@ -492,8 +493,8 @@ vaAtT va t =
 ballPosAtT : BallPosition -> Float -> BallPosition
 ballPosAtT ball t =
     { t = t
-    , x = posAtT ball.x (t-ball.t) ball.va
-    , va = vaAtT ball.va (t-ball.t)
+    , x = posAtT ball.x (t - ball.t) ball.va
+    , va = vaAtT ball.va (t - ball.t)
     }
 
 
