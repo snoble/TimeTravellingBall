@@ -90,7 +90,7 @@ type alias Model =
     , line : Maybe ( Mouse.Event, Mouse.Event )
     , balls : List Ball
     , duration : Float
-    , collisions : List BallCollision
+    , collisions : Maybe BallCollision
     }
 
 
@@ -99,10 +99,10 @@ zeroTimePosition pos =
     ballPosAtT pos 0.0
 
 
-collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> List BallCollision
+collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
 collisionsFromPositions position1 position2 =
     if position1.absoluteStopTime < position2.pos.t || position2.absoluteStopTime < position1.pos.t then
-        []
+        Nothing
 
     else
         let
@@ -130,25 +130,56 @@ collisionsFromPositions position1 position2 =
                 ]
 
             eps =
-                0.001
-
-            sols1 =
-                solve polynomial eps
+                0.000001
 
             sols =
-                sols1
-                    |> List.filter
-                        (\c ->
-                            let
-                                { re, im } =
-                                    c |> toCartesian
-                            in
-                            abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime
-                        )
-                    |> List.map (\c -> (c |> toCartesian).re)
-                    |> List.map (\r -> BallCollision position1.idx position2.idx r)
+                solve polynomial 0.001
         in
         sols
+            |> List.filterMap
+                (\c ->
+                    let
+                        { re, im } =
+                            c |> toCartesian
+                    in
+                    if abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime then
+                        Just (c |> toCartesian).re
+
+                    else
+                        Nothing
+                )
+            |> List.sort
+            |> List.foldl
+                (\t ->
+                    \collision ->
+                        case collision of
+                            Just _ ->
+                                collision
+
+                            Nothing ->
+                                let
+                                    candidatePosition1 =
+                                        ballPosAtT position1.pos t
+
+                                    candidatePosition2 =
+                                        ballPosAtT position2.pos t
+
+                                    xt =
+                                        Math.Vector2.sub candidatePosition1.x candidatePosition2.x
+
+                                    vt =
+                                        Math.Vector2.sub candidatePosition1.va.v candidatePosition2.va.v
+
+                                    dp =
+                                        Math.Vector2.dot xt vt
+                                in
+                                if dp < 0 then
+                                    Just (BallCollision position1.idx position2.idx t)
+
+                                else
+                                    Nothing
+                )
+                Nothing
 
 
 collisionCandidates : IndexedBallPosition -> List ( IndexedBallPosition, List BallCollision ) -> List ( IndexedBallPosition, List BallCollision )
@@ -156,7 +187,7 @@ collisionCandidates position otherPositions =
     let
         newCollisions =
             otherPositions
-                |> List.concatMap
+                |> List.filterMap
                     (\( otherPosition, otherCollisions ) ->
                         collisionsFromPositions position otherPosition
                     )
