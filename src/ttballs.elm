@@ -70,8 +70,8 @@ type alias BallChange =
 
 
 type alias BallCollision =
-    { ball1 : Int
-    , ball2 : Int
+    { ball1 : IndexedBallPosition
+    , ball2 : IndexedBallPosition
     , t : Float
     }
 
@@ -79,7 +79,6 @@ type alias BallCollision =
 type alias IndexedBallPosition =
     { idx : Int
     , pos : BallPosition
-    , absoluteStopTime : Float
     }
 
 
@@ -101,7 +100,7 @@ zeroTimePosition pos =
 
 collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
 collisionsFromPositions position1 position2 =
-    if position1.absoluteStopTime < position2.pos.t || position2.absoluteStopTime < position1.pos.t then
+    if (position1 |> absoluteStopTime) < position2.pos.t || (position2 |> absoluteStopTime) < position1.pos.t then
         Nothing
 
     else
@@ -142,7 +141,7 @@ collisionsFromPositions position1 position2 =
                         { re, im } =
                             c |> toCartesian
                     in
-                    if abs im < eps && re >= 0 && re < position1.absoluteStopTime && re < position2.absoluteStopTime then
+                    if abs im < eps && re >= 0 && re < (position1 |> absoluteStopTime) && re < (position2 |> absoluteStopTime) then
                         Just (c |> toCartesian).re
 
                     else
@@ -174,7 +173,7 @@ collisionsFromPositions position1 position2 =
                                         Math.Vector2.dot xt vt
                                 in
                                 if dp < 0 then
-                                    Just (BallCollision position1.idx position2.idx t)
+                                    Just (BallCollision { position1 | pos = candidatePosition1 } { position2 | pos = candidatePosition2 } t)
 
                                 else
                                     Nothing
@@ -195,6 +194,33 @@ collisionCandidates position otherPositions =
     ( position, newCollisions ) :: otherPositions
 
 
+positionsAfterCollision : BallPosition -> BallPosition -> ( BallPosition, BallPosition )
+positionsAfterCollision pos1 pos2 =
+    let
+        v1MinusV2 =
+            Math.Vector2.sub pos1.va.v pos2.va.v
+
+        x1MinusX2 =
+            Math.Vector2.sub pos1.x pos2.x
+
+        scale =
+            Math.Vector2.dot v1MinusV2 x1MinusX2 / Math.Vector2.lengthSquared x1MinusX2
+
+        newV1 =
+            Math.Vector2.sub pos1.va.v (Math.Vector2.scale scale x1MinusX2)
+
+        newV2 =
+            Math.Vector2.sub pos1.va.v (Math.Vector2.scale -scale x1MinusX2)
+
+        newPos1 =
+            { pos1 | va = avFromV newV1 }
+
+        newPos2 =
+            { pos1 | va = avFromV newV1 }
+    in
+    ( newPos1, newPos2 )
+
+
 nextChanges : List BallPosition -> ( List BallChange, List BallCollision )
 nextChanges positions =
     let
@@ -203,15 +229,16 @@ nextChanges positions =
                 |> List.indexedMap
                     (\idx ->
                         \pos ->
-                            let
-                                stopTime =
-                                    pos.t + pos.va.stopTime
-                            in
-                            IndexedBallPosition idx pos stopTime
+                            IndexedBallPosition idx pos
                     )
                 |> List.foldl collisionCandidates []
     in
     ( [], [] )
+
+
+absoluteStopTime : IndexedBallPosition -> Float
+absoluteStopTime ball =
+    ball.pos.t + ball.pos.va.stopTime
 
 
 avFromV : Vec2 -> VelAcc
@@ -255,7 +282,6 @@ indexedPositionFrom x v t idx =
         , x = x
         , va = va
         }
-    , absoluteStopTime = va.stopTime + t
     }
 
 
