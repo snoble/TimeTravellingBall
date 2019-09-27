@@ -5,10 +5,12 @@ import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
 import Debug
+import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
+import List.Extra exposing (minimumBy)
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
 import Svg exposing (..)
@@ -173,7 +175,11 @@ collisionsFromPositions position1 position2 =
                                         Math.Vector2.dot xt vt
                                 in
                                 if dp < 0 then
-                                    Just (BallCollision { position1 | pos = candidatePosition1 } { position2 | pos = candidatePosition2 } t)
+                                    let
+                                        (postCollision1, postCollision2) = positionsAfterCollision candidatePosition1 candidatePosition2
+                                    in
+                                    
+                                    Just (BallCollision { position1 | pos = postCollision1 } { position2 | pos = postCollision2 } t)
 
                                 else
                                     Nothing
@@ -221,19 +227,74 @@ positionsAfterCollision pos1 pos2 =
     ( newPos1, newPos2 )
 
 
-nextChanges : List BallPosition -> ( List BallChange, List BallCollision )
+nextChanges : List BallPosition -> List IndexedBallPosition
 nextChanges positions =
     let
-        possibleCollisions =
+        indexedPositions =
             positions
                 |> List.indexedMap
                     (\idx ->
                         \pos ->
                             IndexedBallPosition idx pos
                     )
+
+        possibleCollisions =
+            indexedPositions
                 |> List.foldl collisionCandidates []
+                |> List.concatMap (\( _, cols ) -> cols)
+
+        nextStop =
+            indexedPositions
+                |> List.filter (\pos -> pos.pos.va.stopTime > 0)
+                |> minimumBy (\pos -> pos |> absoluteStopTime)
+                |> Maybe.map
+                    (\pos ->
+                        { pos
+                            | pos =
+                                { x = posAtT pos.pos.x pos.pos.va.stopTime pos.pos.va
+                                , va = vaZero
+                                , t = pos.pos.t + pos.pos.va.stopTime
+                                }
+                        }
+                    )
+
+        nextCollision =
+            possibleCollisions
+                |> minimumBy (\col -> col.t)
     in
-    ( [], [] )
+    case ( nextStop, nextCollision ) of
+        ( Just ns, Nothing ) ->
+            [ ns ]
+
+        ( Nothing, Just nc ) ->
+            [ nc.ball1, nc.ball2 ]
+
+        ( Just ns, Just nc ) ->
+            if ns.pos.t < nc.t then
+                [ ns ]
+
+            else
+                [ nc.ball1, nc.ball2 ]
+
+        ( Nothing, Nothing ) ->
+            []
+
+
+generatePositions : Dict Int (List BallPosition) -> Dict Int (List BallPosition)
+generatePositions ballPositions =
+    case nextChanges (ballPositions |> Dict.values |> List.filterMap List.head) of
+        [] ->
+            ballPositions
+
+        indexedPositions ->
+            generatePositions
+                (indexedPositions
+                    |> List.foldl
+                        (\{ idx, pos } ->
+                            Dict.update idx (Maybe.map ((::) pos))
+                        )
+                        ballPositions
+                )
 
 
 absoluteStopTime : IndexedBallPosition -> Float
@@ -333,6 +394,9 @@ init _ =
                                 |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
                     )
                     0.0
+
+        _ =
+            Debug.log "positions" (generatePositions (Dict.fromList [ ( 0, [ pos1.pos ] ), ( 1, [ pos2.pos ] ) ]))
     in
     ( { relativeTime = 0
       , playTime = Nothing
