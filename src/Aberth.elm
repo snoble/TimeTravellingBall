@@ -23,12 +23,6 @@ norm : List Complex -> Float
 norm =
     List.foldl (\xi -> \summand -> summand + complexAbs xi) 0 >> sqrt
 
-
-horner : List Float -> Complex -> Complex
-horner coefs x =
-    coefs |> List.foldl (\ci -> \result -> Complex.real ci |> add (Complex.multiply x result)) Complex.zero
-
-
 hornerRuffini : List Float -> Complex -> Ruffini
 hornerRuffini coefs x =
     coefs |> List.foldl (\ci -> \{ p, q } -> { q = Complex.multiply q x |> add p, p = Complex.real ci |> add (Complex.multiply p x) }) { p = Complex.zero, q = Complex.zero }
