@@ -4,7 +4,6 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
-import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -532,7 +531,7 @@ update msg model =
         ChangeRelativeTime rtw ->
             case rtw of
                 Just rt ->
-                    ( { model | relativeTime = Debug.log "rt" rt }
+                    ( { model | relativeTime = rt }
                     , case model.playTime of
                         Just _ ->
                             Task.perform Play Time.now
