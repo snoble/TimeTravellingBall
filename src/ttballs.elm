@@ -11,6 +11,7 @@ import Html.Attributes as H
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
 import List.Extra exposing (minimumBy)
+import List.Nonempty as NE exposing (Nonempty)
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Platform.Sub as Sub
 import Svg exposing (..)
@@ -100,6 +101,65 @@ zeroTimePosition pos =
     ballPosAtT pos 0.0
 
 
+createBalls : List ( String, BallPosition ) -> List Ball
+createBalls initialState =
+    let
+        movementData =
+            initialState
+                |> List.indexedMap (\i -> \( _, pos ) -> ( i, NE.fromElement pos ))
+                |> Dict.fromList
+                |> generatePositions
+                |> Dict.values
+                |> List.map movementsFromPositions
+    in
+    List.map2
+        (\( initialPosition, t, movements ) ->
+            \( color, _ ) ->
+                { color = color
+                , initPosition = initialPosition
+                , initTime = t
+                , movements = Just movements
+                }
+        )
+        movementData
+        initialState
+
+
+
+-- assumes the last postion is the stopped ball
+
+
+movementsFromPositions : Nonempty BallPosition -> ( Vec2, Float, List BallMovement )
+movementsFromPositions positions =
+    let
+        firstP =
+            positions |> NE.head
+
+        tail =
+            positions |> NE.tail
+
+        initPosition =
+            firstP.x
+
+        initTime =
+            firstP.t
+
+        movements =
+            tail
+                |> List.foldl
+                    (\thisP ->
+                        \( previousP, movementsSoFar ) ->
+                            ( thisP
+                            , { endPos = thisP.x, startVelocity = previousP.va, duration = thisP.t - previousP.t } :: movementsSoFar
+                            )
+                    )
+                    ( firstP, [] )
+                |> Tuple.second
+                |> List.reverse
+    in
+    ( initPosition, initTime, movements )
+
+
 collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
 collisionsFromPositions position1 position2 =
     if (position1 |> absoluteStopTime) < position2.pos.t || (position2 |> absoluteStopTime) < position1.pos.t then
@@ -122,6 +182,9 @@ collisionsFromPositions position1 position2 =
             acc =
                 Math.Vector2.sub ztPos1.va.a ztPos2.va.a
 
+            minT =
+                Basics.max position1.pos.t position2.pos.t
+
             polynomial =
                 [ Math.Vector2.lengthSquared acc / 4.0
                 , Math.Vector2.dot acc v
@@ -143,7 +206,7 @@ collisionsFromPositions position1 position2 =
                         { re, im } =
                             c |> toCartesian
                     in
-                    if abs im < eps && re >= 0 && re < (position1 |> absoluteStopTime) && re < (position2 |> absoluteStopTime) then
+                    if abs im < eps && re >= minT && re < (position1 |> absoluteStopTime) && re < (position2 |> absoluteStopTime) then
                         Just (c |> toCartesian).re
 
                     else
@@ -176,9 +239,9 @@ collisionsFromPositions position1 position2 =
                                 in
                                 if dp < 0 then
                                     let
-                                        (postCollision1, postCollision2) = positionsAfterCollision candidatePosition1 candidatePosition2
+                                        ( postCollision1, postCollision2 ) =
+                                            positionsAfterCollision candidatePosition1 candidatePosition2
                                     in
-                                    
                                     Just (BallCollision { position1 | pos = postCollision1 } { position2 | pos = postCollision2 } t)
 
                                 else
@@ -200,6 +263,11 @@ collisionCandidates position otherPositions =
     ( position, newCollisions ) :: otherPositions
 
 
+orthogonal : Vec2 -> Vec2
+orthogonal x =
+    vec2 (x |> getY) ((x |> getX) * -1)
+
+
 positionsAfterCollision : BallPosition -> BallPosition -> ( BallPosition, BallPosition )
 positionsAfterCollision pos1 pos2 =
     let
@@ -207,22 +275,22 @@ positionsAfterCollision pos1 pos2 =
             Math.Vector2.sub pos1.va.v pos2.va.v
 
         x1MinusX2 =
-            Math.Vector2.sub pos1.x pos2.x
+            Math.Vector2.direction pos1.x pos2.x
 
         scale =
-            Math.Vector2.dot v1MinusV2 x1MinusX2 / Math.Vector2.lengthSquared x1MinusX2
+            Math.Vector2.dot v1MinusV2 x1MinusX2
 
         newV1 =
             Math.Vector2.sub pos1.va.v (Math.Vector2.scale scale x1MinusX2)
 
         newV2 =
-            Math.Vector2.sub pos1.va.v (Math.Vector2.scale -scale x1MinusX2)
+            Math.Vector2.sub pos2.va.v (Math.Vector2.scale -scale x1MinusX2)
 
         newPos1 =
             { pos1 | va = avFromV newV1 }
 
         newPos2 =
-            { pos1 | va = avFromV newV1 }
+            { pos2 | va = avFromV newV2 }
     in
     ( newPos1, newPos2 )
 
@@ -280,18 +348,18 @@ nextChanges positions =
             []
 
 
-generatePositions : Dict Int (List BallPosition) -> Dict Int (List BallPosition)
+generatePositions : Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
 generatePositions ballPositions =
-    case nextChanges (ballPositions |> Dict.values |> List.filterMap List.head) of
+    case nextChanges (ballPositions |> Dict.values |> List.map NE.head) of
         [] ->
-            ballPositions
+            ballPositions |> Dict.map (\_ -> NE.reverse)
 
         indexedPositions ->
             generatePositions
                 (indexedPositions
                     |> List.foldl
                         (\{ idx, pos } ->
-                            Dict.update idx (Maybe.map ((::) pos))
+                            Dict.update idx (Maybe.map (NE.cons pos))
                         )
                         ballPositions
                 )
@@ -352,37 +420,14 @@ init _ =
         v1 =
             vec2 0.2 0.3
 
-        ball1 =
-            { color = "red"
-            , initPosition = vec2 100 100
-            , initTime = 1500.0
-            , movements =
-                Just
-                    [ movementFrom (vec2 100 100) v1
-                    ]
-            }
-
         v2 =
             vec2 0.1 -0.35
 
-        ball2 =
-            { color = "blue"
-            , initPosition = vec2 100 800
-            , initTime = 500.0
-            , movements =
-                Just
-                    [ movementFrom (vec2 100 800) v2
-                    ]
-            }
-
         balls =
-            [ ball1, ball2 ]
-
-        pos1 =
-            indexedPositionFrom ball1.initPosition v1 ball1.initTime 1
-
-        pos2 =
-            indexedPositionFrom ball2.initPosition v2 ball2.initTime 2
+            createBalls
+                [ ( "red", BallPosition 1500.0 (vec2 100 100) (avFromV v1) )
+                , ( "blue", BallPosition 500.0 (vec2 100 800) (avFromV v2) )
+                ]
 
         duration =
             balls
@@ -394,9 +439,6 @@ init _ =
                                 |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
                     )
                     0.0
-
-        _ =
-            Debug.log "positions" (generatePositions (Dict.fromList [ ( 0, [ pos1.pos ] ), ( 1, [ pos2.pos ] ) ]))
     in
     ( { relativeTime = 0
       , playTime = Nothing
@@ -404,7 +446,7 @@ init _ =
       , line = Nothing
       , balls = balls
       , duration = duration
-      , collisions = Debug.log "collisions" (collisionsFromPositions pos1 pos2)
+      , collisions = Nothing
       }
     , Task.perform Play Time.now
     )
