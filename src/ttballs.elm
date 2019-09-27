@@ -701,7 +701,7 @@ svgCircle ball time =
         [ Svg.circle
             [ cx xString
             , cy yString
-            , r "10"
+            , r "11"
             , fill ball.color
             ]
             []
