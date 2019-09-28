@@ -117,11 +117,19 @@ createPortal entrance exit angle timeDelta =
     }
 
 
+type alias Line =
+    { s : Vec2
+    , e : Vec2
+    , time : Float
+    , fixed : Bool
+    }
+
+
 type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
     , paused : Bool
-    , line : Maybe ( Vec2, Vec2 )
+    , line : Maybe Line
     , balls : List Ball
     , duration : Float
     , portal : Portal
@@ -555,7 +563,7 @@ update msg model =
                     v =
                         pe2Vec2 event
                 in
-                { model | line = v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> ( s, v )) }
+                { model | line = v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> Line s v (model.relativeTime |> toFloat) False) }
 
               else
                 model
@@ -564,7 +572,18 @@ update msg model =
 
         MouseMoveEvent event ->
             ( if event.isPrimary then
-                { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, pe2Vec2 event )) }
+                { model
+                    | line =
+                        model.line
+                            |> Maybe.map
+                                (\line ->
+                                    if line.fixed then
+                                        line
+
+                                    else
+                                        { line | e = pe2Vec2 event }
+                                )
+                }
 
               else
                 model
@@ -573,7 +592,7 @@ update msg model =
 
         MouseUpEvent event ->
             ( if event.isPrimary then
-                { model | line = Nothing }
+                { model | line = model.line |> Maybe.map (\l -> { l | fixed = True }) }
 
               else
                 model
@@ -582,7 +601,7 @@ update msg model =
 
         MouseLeaveEvent event ->
             ( if event.isPrimary then
-                { model | line = Nothing }
+                { model | line = model.line |> Maybe.map (\l -> { l | fixed = True }) }
 
               else
                 model
@@ -672,11 +691,11 @@ view model =
         ]
 
 
-svgLine : Maybe ( Vec2, Vec2 ) -> List (Svg Msg)
+svgLine : Maybe Line -> List (Svg Msg)
 svgLine maybeLine =
     maybeLine
         |> Maybe.map
-            (\( s, e ) ->
+            (\{ s, e, time, fixed } ->
                 [ Svg.line
                     [ x1 (s |> getX |> String.fromFloat)
                     , y1 (s |> getY |> String.fromFloat)
