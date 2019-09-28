@@ -133,6 +133,7 @@ type alias Model =
     , balls : List Ball
     , duration : Float
     , portal : Portal
+    , initBall : ( String, BallPosition )
     }
 
 
@@ -405,18 +406,22 @@ absoluteStopTime ball =
     ball.pos.t + ball.pos.va.stopTime
 
 
+accIntensity =
+    0.0001
+
+
 avFromV : Vec2 -> VelAcc
 avFromV v =
     if Math.Vector2.length v == 0.0 then
         vaZero
 
     else
-        VelAcc v (accFromV v) (Math.Vector2.length v / 0.0001)
+        VelAcc v (accFromV v) (Math.Vector2.length v / accIntensity)
 
 
 accFromV : Vec2 -> Vec2
 accFromV =
-    normalize >> Math.Vector2.scale -0.0001
+    normalize >> Math.Vector2.scale -accIntensity
 
 
 movementFrom : Vec2 -> Vec2 -> BallMovement
@@ -449,31 +454,35 @@ indexedPositionFrom x v t idx =
     }
 
 
+durationFromBalls : List Ball -> Float
+durationFromBalls balls =
+    balls
+        |> List.foldl
+            (\ball ->
+                \maxDur ->
+                    ball.movements
+                        |> Maybe.withDefault []
+                        |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
+            )
+            0.0
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v1 =
             vec2 0.2 0.3
 
-        v2 =
-            vec2 0.1 -0.35
+        initBall =
+            ( "red", BallPosition 1500.0 (vec2 100 100) (avFromV v1) )
 
         balls =
             createBalls
-                [ ( "red", BallPosition 1500.0 (vec2 100 100) (avFromV v1) )
-                , ( "blue", BallPosition 500.0 (vec2 100 800) (avFromV v2) )
+                [ initBall
                 ]
 
         duration =
-            balls
-                |> List.foldl
-                    (\ball ->
-                        \maxDur ->
-                            ball.movements
-                                |> Maybe.withDefault []
-                                |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
-                    )
-                    0.0
+            durationFromBalls balls
 
         portal =
             createPortal (vec2 500 100) (vec2 100 800) 20 5000
@@ -482,6 +491,7 @@ init _ =
       , playTime = Nothing
       , paused = False
       , line = Nothing
+      , initBall = initBall
       , balls = balls
       , duration = duration
       , portal = portal
@@ -529,6 +539,24 @@ vecToExitStartingPoint portal x =
                     Math.Vector2.direction x portal.exit
         in
         Just (Math.Vector2.add portal.exit (Math.Vector2.scale 15.0 direction))
+
+
+updateWithNewLine : Model -> Line -> Model
+updateWithNewLine model line =
+    let
+        distance =
+            Math.Vector2.distance line.e line.s
+
+        initV =
+            Math.Vector2.direction line.e line.s |> Math.Vector2.scale (sqrt (distance * accIntensity * 2.0))
+
+        pos2 =
+            { t = line.time, x = line.s, va = avFromV initV }
+
+        balls =
+            createBalls [ model.initBall, ( "blue", pos2 ) ]
+    in
+    { model | line = Just line, balls = balls, duration = durationFromBalls balls }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -592,7 +620,12 @@ update msg model =
 
         MouseUpEvent event ->
             ( if event.isPrimary then
-                { model | line = model.line |> Maybe.map (\l -> { l | fixed = True }) }
+                case model.line of
+                    Just line ->
+                        updateWithNewLine model { line | fixed = True }
+
+                    Nothing ->
+                        model
 
               else
                 model
@@ -601,7 +634,12 @@ update msg model =
 
         MouseLeaveEvent event ->
             ( if event.isPrimary then
-                { model | line = model.line |> Maybe.map (\l -> { l | fixed = True }) }
+                case model.line of
+                    Just line ->
+                        updateWithNewLine model { line | fixed = True }
+
+                    Nothing ->
+                        model
 
               else
                 model
@@ -684,8 +722,8 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                ++ svgPortal model.portal
+            (svgPortal model.portal
+                ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
                 ++ svgLine model.line
             )
         ]
