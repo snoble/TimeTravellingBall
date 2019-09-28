@@ -134,6 +134,7 @@ type alias Model =
     , duration : Float
     , portal : Portal
     , initBall : ( String, BallPosition )
+    , ghosts : List Ball
     }
 
 
@@ -201,10 +202,10 @@ movementsFromPositions positions =
     ( initPosition, initTime, movements )
 
 
-collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
-collisionsFromPositions position1 position2 =
+interceptTime : IndexedBallPosition -> IndexedBallPosition -> List Float
+interceptTime position1 position2 =
     if (position1 |> absoluteStopTime) < position2.pos.t || (position2 |> absoluteStopTime) < position1.pos.t then
-        Nothing
+        []
 
     else
         let
@@ -253,42 +254,47 @@ collisionsFromPositions position1 position2 =
                     else
                         Nothing
                 )
-            |> List.sort
-            |> List.foldl
-                (\t ->
-                    \collision ->
-                        case collision of
-                            Just _ ->
-                                collision
 
-                            Nothing ->
+
+collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
+collisionsFromPositions position1 position2 =
+    interceptTime position1 position2
+        |> List.sort
+        |> List.foldl
+            (\t ->
+                \collision ->
+                    case collision of
+                        Just _ ->
+                            collision
+
+                        Nothing ->
+                            let
+                                candidatePosition1 =
+                                    ballPosAtT position1.pos t
+
+                                candidatePosition2 =
+                                    ballPosAtT position2.pos t
+
+                                xt =
+                                    Math.Vector2.sub candidatePosition1.x candidatePosition2.x
+
+                                vt =
+                                    Math.Vector2.sub candidatePosition1.va.v candidatePosition2.va.v
+
+                                dp =
+                                    Math.Vector2.dot xt vt
+                            in
+                            if dp < 0 then
                                 let
-                                    candidatePosition1 =
-                                        ballPosAtT position1.pos t
-
-                                    candidatePosition2 =
-                                        ballPosAtT position2.pos t
-
-                                    xt =
-                                        Math.Vector2.sub candidatePosition1.x candidatePosition2.x
-
-                                    vt =
-                                        Math.Vector2.sub candidatePosition1.va.v candidatePosition2.va.v
-
-                                    dp =
-                                        Math.Vector2.dot xt vt
+                                    ( postCollision1, postCollision2 ) =
+                                        positionsAfterCollision candidatePosition1 candidatePosition2
                                 in
-                                if dp < 0 then
-                                    let
-                                        ( postCollision1, postCollision2 ) =
-                                            positionsAfterCollision candidatePosition1 candidatePosition2
-                                    in
-                                    Just (BallCollision { position1 | pos = postCollision1 } { position2 | pos = postCollision2 } t)
+                                Just (BallCollision { position1 | pos = postCollision1 } { position2 | pos = postCollision2 } t)
 
-                                else
-                                    Nothing
-                )
-                Nothing
+                            else
+                                Nothing
+            )
+            Nothing
 
 
 collisionCandidates : IndexedBallPosition -> List ( IndexedBallPosition, List BallCollision ) -> List ( IndexedBallPosition, List BallCollision )
@@ -495,6 +501,7 @@ init _ =
       , balls = balls
       , duration = duration
       , portal = portal
+      , ghosts = []
       }
     , Task.perform Play Time.now
     )
