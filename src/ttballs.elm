@@ -295,10 +295,6 @@ collisionCandidates position otherPositions =
     ( position, newCollisions ) :: otherPositions
 
 
-orthogonal : Vec2 -> Vec2
-orthogonal x =
-    vec2 (x |> getY) ((x |> getX) * -1)
-
 
 positionsAfterCollision : BallPosition -> BallPosition -> ( BallPosition, BallPosition )
 positionsAfterCollision pos1 pos2 =
