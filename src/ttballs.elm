@@ -121,9 +121,10 @@ type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
     , paused : Bool
-    , line : Maybe ( Mouse.Event, Mouse.Event )
+    , line : Maybe ( Vec2, Vec2 )
     , balls : List Ball
     , duration : Float
+    , portal : Portal
     }
 
 
@@ -470,6 +471,9 @@ init _ =
                                 |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
                     )
                     0.0
+
+        portal =
+            createPortal (vec2 500 100) (vec2 100 800) 20 5000
     in
     ( { relativeTime = 0
       , playTime = Nothing
@@ -477,6 +481,7 @@ init _ =
       , line = Nothing
       , balls = balls
       , duration = duration
+      , portal = portal
       }
     , Task.perform Play Time.now
     )
@@ -495,6 +500,15 @@ type Msg
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
     | ChangeRelativeTime (Maybe Int)
+
+
+pe2Vec2 : Mouse.Event -> Vec2
+pe2Vec2 event =
+    let
+        ( x, y ) =
+            event.pointer.offsetPos
+    in
+    vec2 x y
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -525,7 +539,7 @@ update msg model =
 
         MouseDownEvent event ->
             ( if event.isPrimary then
-                { model | line = Just ( event, event ) }
+                { model | line = Just ( pe2Vec2 event, pe2Vec2 event ) }
 
               else
                 model
@@ -534,7 +548,7 @@ update msg model =
 
         MouseMoveEvent event ->
             ( if event.isPrimary then
-                { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, event )) }
+                { model | line = model.line |> Maybe.map (\( s, e ) -> ( s, pe2Vec2 event )) }
 
               else
                 model
@@ -635,22 +649,15 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgCircle ball (model.relativeTime |> toFloat)))
+            ((model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
                 ++ (model.line
                         |> Maybe.map
                             (\( s, e ) ->
-                                let
-                                    ( posX1, posY1 ) =
-                                        s.pointer.offsetPos
-
-                                    ( posX2, posY2 ) =
-                                        e.pointer.offsetPos
-                                in
                                 [ Svg.line
-                                    [ x1 (posX1 |> String.fromFloat)
-                                    , y1 (posY1 |> String.fromFloat)
-                                    , x2 (posX2 |> String.fromFloat)
-                                    , y2 (posY2 |> String.fromFloat)
+                                    [ x1 (s |> getX |> String.fromFloat)
+                                    , y1 (s |> getY |> String.fromFloat)
+                                    , x2 (e |> getX |> String.fromFloat)
+                                    , y2 (e |> getY |> String.fromFloat)
                                     , stroke "black"
                                     ]
                                     []
@@ -658,6 +665,7 @@ view model =
                             )
                         |> Maybe.withDefault []
                    )
+                ++ svgPortal model.portal
             )
         ]
 
@@ -691,8 +699,27 @@ ballPosAtT ball t =
     }
 
 
-svgCircle : Ball -> Float -> List (Svg Msg)
-svgCircle ball time =
+svgPortal : Portal -> List (Svg Msg)
+svgPortal portal =
+    [ Svg.circle
+        [ cx (portal.entrance |> Math.Vector2.getX |> round |> String.fromInt)
+        , cy (portal.entrance |> Math.Vector2.getY |> round |> String.fromInt)
+        , r "20"
+        , fill "yellow"
+        ]
+        []
+    , Svg.circle
+        [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
+        , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
+        , r "20"
+        , fill "yellow"
+        ]
+        []
+    ]
+
+
+svgBall : Ball -> Float -> List (Svg Msg)
+svgBall ball time =
     if time < ball.initTime then
         []
 
