@@ -295,7 +295,6 @@ collisionCandidates position otherPositions =
     ( position, newCollisions ) :: otherPositions
 
 
-
 positionsAfterCollision : BallPosition -> BallPosition -> ( BallPosition, BallPosition )
 positionsAfterCollision pos1 pos2 =
     let
@@ -507,6 +506,23 @@ pe2Vec2 event =
     vec2 x y
 
 
+vecToExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
+vecToExitStartingPoint portal x =
+    if Math.Vector2.distance x portal.exit > 20.0 then
+        Nothing
+
+    else
+        let
+            direction =
+                if Math.Vector2.distance x portal.exit == 0.0 then
+                    vec2 1 0
+
+                else
+                    Math.Vector2.direction x portal.exit
+        in
+        Just (Math.Vector2.add portal.exit (Math.Vector2.scale 15.0 direction))
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -535,7 +551,11 @@ update msg model =
 
         MouseDownEvent event ->
             ( if event.isPrimary then
-                { model | line = Just ( pe2Vec2 event, pe2Vec2 event ) }
+                let
+                    v =
+                        pe2Vec2 event
+                in
+                { model | line = v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> ( s, v )) }
 
               else
                 model
@@ -646,24 +666,28 @@ view model =
             , Mouse.onLeave MouseLeaveEvent
             ]
             ((model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                ++ (model.line
-                        |> Maybe.map
-                            (\( s, e ) ->
-                                [ Svg.line
-                                    [ x1 (s |> getX |> String.fromFloat)
-                                    , y1 (s |> getY |> String.fromFloat)
-                                    , x2 (e |> getX |> String.fromFloat)
-                                    , y2 (e |> getY |> String.fromFloat)
-                                    , stroke "black"
-                                    ]
-                                    []
-                                ]
-                            )
-                        |> Maybe.withDefault []
-                   )
                 ++ svgPortal model.portal
+                ++ svgLine model.line
             )
         ]
+
+
+svgLine : Maybe ( Vec2, Vec2 ) -> List (Svg Msg)
+svgLine maybeLine =
+    maybeLine
+        |> Maybe.map
+            (\( s, e ) ->
+                [ Svg.line
+                    [ x1 (s |> getX |> String.fromFloat)
+                    , y1 (s |> getY |> String.fromFloat)
+                    , x2 (e |> getX |> String.fromFloat)
+                    , y2 (e |> getY |> String.fromFloat)
+                    , stroke "black"
+                    ]
+                    []
+                ]
+            )
+        |> Maybe.withDefault []
 
 
 posAtT : Vec2 -> Float -> VelAcc -> Vec2
