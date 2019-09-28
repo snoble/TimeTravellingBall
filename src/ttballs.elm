@@ -11,7 +11,9 @@ import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
 import List.Extra exposing (minimumBy)
 import List.Nonempty as NE exposing (Nonempty)
+import Math.Matrix4
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
+import Math.Vector3 exposing (vec3)
 import Platform.Sub as Sub
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
@@ -84,6 +86,37 @@ type alias IndexedBallPosition =
     }
 
 
+type alias Portal =
+    { entrance : Vec2
+    , exit : Vec2
+    , rotation : Vec2 -> Vec2
+    , timeDelta : Float
+    }
+
+
+createRotation : Float -> Vec2 -> Vec2
+createRotation angle =
+    let
+        matrix =
+            Math.Matrix4.makeRotate angle (vec3 0 0 1)
+    in
+    \v2 ->
+        let
+            v3 =
+                Math.Matrix4.transform matrix (vec3 (getX v2) (getY v2) 0)
+        in
+        vec2 (Math.Vector3.getX v3) (Math.Vector3.getY v3)
+
+
+createPortal : Vec2 -> Vec2 -> Float -> Float -> Portal
+createPortal entrance exit angle timeDelta =
+    { entrance = entrance
+    , exit = exit
+    , rotation = createRotation angle
+    , timeDelta = timeDelta
+    }
+
+
 type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
@@ -91,7 +124,6 @@ type alias Model =
     , line : Maybe ( Mouse.Event, Mouse.Event )
     , balls : List Ball
     , duration : Float
-    , collisions : Maybe BallCollision
     }
 
 
@@ -445,7 +477,6 @@ init _ =
       , line = Nothing
       , balls = balls
       , duration = duration
-      , collisions = Nothing
       }
     , Task.perform Play Time.now
     )
