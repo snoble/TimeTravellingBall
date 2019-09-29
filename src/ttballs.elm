@@ -41,6 +41,11 @@ type alias VelAcc =
     }
 
 
+rotateVelAcc : (Vec2 -> Vec2) -> VelAcc -> VelAcc
+rotateVelAcc fn va =
+    { va | v = fn va.v, a = fn va.a }
+
+
 vaZero =
     VelAcc (vec2 0.0 0.0) (vec2 0.0 0.0) 0.0
 
@@ -143,14 +148,14 @@ zeroTimePosition pos =
     ballPosAtT pos 0.0
 
 
-createBalls : List ( String, BallPosition ) -> List Ball
-createBalls initialState =
+createBalls : List ( String, BallPosition ) -> List Portal -> List Ball
+createBalls initialState portals =
     let
         movementData =
             initialState
                 |> List.indexedMap (\i -> \( _, pos ) -> ( i, NE.fromElement pos ))
                 |> Dict.fromList
-                |> generatePositions
+                |> generatePositions portals
                 |> Dict.values
                 |> List.map movementsFromPositions
     in
@@ -202,18 +207,18 @@ movementsFromPositions positions =
     ( initPosition, initTime, movements )
 
 
-interceptTime : IndexedBallPosition -> IndexedBallPosition -> List Float
+interceptTime : BallPosition -> BallPosition -> List Float
 interceptTime position1 position2 =
-    if (position1 |> absoluteStopTime) < position2.pos.t || (position2 |> absoluteStopTime) < position1.pos.t then
+    if (position1 |> absoluteStopTime) < position2.t || (position2 |> absoluteStopTime) < position1.t then
         []
 
     else
         let
             ztPos1 =
-                zeroTimePosition position1.pos
+                zeroTimePosition position1
 
             ztPos2 =
-                zeroTimePosition position2.pos
+                zeroTimePosition position2
 
             x =
                 Math.Vector2.sub ztPos1.x ztPos2.x
@@ -225,7 +230,7 @@ interceptTime position1 position2 =
                 Math.Vector2.sub ztPos1.va.a ztPos2.va.a
 
             minT =
-                Basics.max position1.pos.t position2.pos.t
+                Basics.max position1.t position2.t
 
             polynomial =
                 [ Math.Vector2.lengthSquared acc / 4.0
@@ -258,7 +263,7 @@ interceptTime position1 position2 =
 
 collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
 collisionsFromPositions position1 position2 =
-    interceptTime position1 position2
+    interceptTime position1.pos position2.pos
         |> List.sort
         |> List.foldl
             (\t ->
@@ -337,8 +342,39 @@ positionsAfterCollision pos1 pos2 =
     ( newPos1, newPos2 )
 
 
-nextChanges : List BallPosition -> List IndexedBallPosition
-nextChanges positions =
+possiblePortalJumps : List Portal -> List IndexedBallPosition -> List ( IndexedBallPosition, Float )
+possiblePortalJumps portals balls =
+    portals
+        |> List.concatMap
+            (\portal ->
+                balls
+                    |> List.concatMap
+                        (\ball ->
+                            let
+                                times =
+                                    interceptTime { t = 0, x = portal.entrance, va = vaZero } ball.pos
+                            in
+                            times
+                                |> List.map
+                                    (\t ->
+                                        let
+                                            enteringPos =
+                                                ballPosAtT ball.pos t
+
+                                            exitingPos =
+                                                { enteringPos
+                                                    | x = portal.exit
+                                                    , va = rotateVelAcc portal.rotation enteringPos.va
+                                                }
+                                        in
+                                        ( { ball | pos = exitingPos }, t )
+                                    )
+                        )
+            )
+
+
+nextChanges : List BallPosition -> List Portal -> List IndexedBallPosition
+nextChanges positions portals =
     let
         indexedPositions =
             positions
@@ -356,7 +392,7 @@ nextChanges positions =
         nextStop =
             indexedPositions
                 |> List.filter (\pos -> pos.pos.va.stopTime > 0)
-                |> minimumBy (\pos -> pos |> absoluteStopTime)
+                |> minimumBy (\pos -> pos.pos |> absoluteStopTime)
                 |> Maybe.map
                     (\pos ->
                         { pos
@@ -371,33 +407,47 @@ nextChanges positions =
         nextCollision =
             possibleCollisions
                 |> minimumBy (\col -> col.t)
+
+        nextPortalJump =
+            possiblePortalJumps portals indexedPositions |> minimumBy Tuple.second
+
+        nextChange =
+            [ nextStop |> Maybe.map (\ns -> ( ns.pos.t, Stop ns ))
+            , nextCollision |> Maybe.map (\nc -> ( nc.t, Collision nc ))
+            , nextPortalJump |> Maybe.map (\np -> ( np |> Tuple.second, PortalJump np ))
+            ]
+                |> List.filterMap identity
+                |> minimumBy (\( t, _ ) -> t)
+                |> Maybe.map Tuple.second
     in
-    case ( nextStop, nextCollision ) of
-        ( Just ns, Nothing ) ->
+    case nextChange of
+        Nothing ->
+            []
+
+        Just (Stop ns) ->
             [ ns ]
 
-        ( Nothing, Just nc ) ->
+        Just (Collision nc) ->
             [ nc.ball1, nc.ball2 ]
 
-        ( Just ns, Just nc ) ->
-            if ns.pos.t < nc.t then
-                [ ns ]
-
-            else
-                [ nc.ball1, nc.ball2 ]
-
-        ( Nothing, Nothing ) ->
+        Just (PortalJump ( ball, t )) ->
             []
 
 
-generatePositions : Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
-generatePositions ballPositions =
-    case nextChanges (ballPositions |> Dict.values |> List.map NE.head) of
+type NextChange
+    = Stop IndexedBallPosition
+    | Collision BallCollision
+    | PortalJump ( IndexedBallPosition, Float )
+
+
+generatePositions : List Portal -> Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
+generatePositions portals ballPositions =
+    case nextChanges (ballPositions |> Dict.values |> List.map NE.head) portals of
         [] ->
             ballPositions |> Dict.map (\_ -> NE.reverse)
 
         indexedPositions ->
-            generatePositions
+            generatePositions portals
                 (indexedPositions
                     |> List.foldl
                         (\{ idx, pos } ->
@@ -407,9 +457,9 @@ generatePositions ballPositions =
                 )
 
 
-absoluteStopTime : IndexedBallPosition -> Float
-absoluteStopTime ball =
-    ball.pos.t + ball.pos.va.stopTime
+absoluteStopTime : BallPosition -> Float
+absoluteStopTime pos =
+    pos.t + pos.va.stopTime
 
 
 accIntensity =
@@ -482,16 +532,17 @@ init _ =
         initBall =
             ( "red", BallPosition 1500.0 (vec2 100 100) (avFromV v1) )
 
+        portal =
+            createPortal (vec2 500 100) (vec2 100 800) 20 5000
+
         balls =
             createBalls
                 [ initBall
                 ]
+                [ portal ]
 
         duration =
             durationFromBalls balls
-
-        portal =
-            createPortal (vec2 500 100) (vec2 100 800) 20 5000
     in
     ( { relativeTime = 0
       , playTime = Nothing
@@ -561,7 +612,7 @@ updateWithNewLine model line =
             { t = line.time, x = line.s, va = avFromV initV }
 
         balls =
-            createBalls [ model.initBall, ( "blue", pos2 ) ]
+            createBalls [ model.initBall, ( "blue", pos2 ) ] [ model.portal ]
     in
     { model | line = Just line, balls = balls, duration = durationFromBalls balls }
 
