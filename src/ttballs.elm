@@ -391,7 +391,6 @@ nextChanges positions portals =
 
         nextStop =
             indexedPositions
-!
                 |> minimumBy (\pos -> pos.pos |> endPositionForStopTime)
                 |> Maybe.map
                     (\pos ->
