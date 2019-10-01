@@ -648,8 +648,19 @@ update msg model =
                 let
                     v =
                         pe2Vec2 event
+
+                    line =
+                        v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> Line s v (model.relativeTime |> toFloat) False)
                 in
-                { model | line = v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> Line s v (model.relativeTime |> toFloat) False) }
+                { model
+                    | line =
+                        case line of
+                            Just _ ->
+                                line
+
+                            _ ->
+                                model.line
+                }
 
               else
                 model
