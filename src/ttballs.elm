@@ -209,7 +209,7 @@ movementsFromPositions positions =
 
 interceptTime : BallPosition -> BallPosition -> List Float
 interceptTime position1 position2 =
-    if (position1 |> absoluteStopTime) < position2.t || (position2 |> absoluteStopTime) < position1.t then
+    if (position1 |> endPositionForStopTime) < position2.t || (position2 |> endPositionForStopTime) < position1.t then
         []
 
     else
@@ -253,7 +253,7 @@ interceptTime position1 position2 =
                         { re, im } =
                             c |> toCartesian
                     in
-                    if abs im < eps && re >= minT && re < (position1 |> absoluteStopTime) && re < (position2 |> absoluteStopTime) then
+                    if abs im < eps && re >= minT && re < (position1 |> endPositionForStopTime) && re < (position2 |> endPositionForStopTime) then
                         Just (c |> toCartesian).re
 
                     else
@@ -391,8 +391,8 @@ nextChanges positions portals =
 
         nextStop =
             indexedPositions
-                |> List.filter (\pos -> pos.pos.va.stopTime > 0)
-                |> minimumBy (\pos -> pos.pos |> absoluteStopTime)
+!
+                |> minimumBy (\pos -> pos.pos |> endPositionForStopTime)
                 |> Maybe.map
                     (\pos ->
                         { pos
@@ -457,9 +457,13 @@ generatePositions portals ballPositions =
                 )
 
 
-absoluteStopTime : BallPosition -> Float
-absoluteStopTime pos =
-    pos.t + pos.va.stopTime
+endPositionForStopTime : BallPosition -> Float
+endPositionForStopTime pos =
+    if pos.va.stopTime == 0.0 then
+        1 / 0
+
+    else
+        pos.t + pos.va.stopTime
 
 
 accIntensity =
