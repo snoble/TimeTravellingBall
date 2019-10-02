@@ -173,7 +173,7 @@ zeroTimePosition pos =
     ballPosAtT pos 0.0
 
 
-createBalls : List ( String, BallPosition ) -> List Portal -> List Ball
+createBalls : List ( String, BallPosition ) -> List Portal -> ( List Ball, List Ball )
 createBalls initialState portals =
     let
         initDict =
@@ -188,18 +188,40 @@ createBalls initialState portals =
             movementDict
                 |> Dict.values
                 |> List.map movementsFromPositions
+
+        liveBalls =
+            List.map2
+                (\( initialPosition, t, movements ) ->
+                    \( color, _ ) ->
+                        { color = color
+                        , initPosition = initialPosition
+                        , initTime = t
+                        , movements = Just movements
+                        }
+                )
+                movementData
+                initialState
+
+        ghosts =
+            ghostDict
+                |> Dict.values
+                |> List.map
+                    (\positions ->
+                        let
+                            ( initialPosition, t, movements ) =
+                                movementsFromPositions positions
+
+                            color =
+                                "green"
+                        in
+                        { color = color
+                        , initPosition = initialPosition
+                        , initTime = t
+                        , movements = Just movements
+                        }
+                    )
     in
-    List.map2
-        (\( initialPosition, t, movements ) ->
-            \( color, _ ) ->
-                { color = color
-                , initPosition = initialPosition
-                , initTime = t
-                , movements = Just movements
-                }
-        )
-        movementData
-        initialState
+    ( liveBalls, ghosts )
 
 
 
@@ -603,7 +625,7 @@ init _ =
         portal =
             createPortal (vec2 415 600) (vec2 100 800) 20 5000
 
-        balls =
+        ( balls, ghosts ) =
             createBalls
                 [ initBall
                 ]
@@ -620,7 +642,7 @@ init _ =
       , balls = balls
       , duration = duration
       , portal = portal
-      , ghosts = []
+      , ghosts = ghosts
       }
     , Task.perform Play Time.now
     )
@@ -679,10 +701,10 @@ updateWithNewLine model line =
         pos2 =
             { t = line.time, x = line.s, va = avFromV initV }
 
-        balls =
+        ( balls, ghosts ) =
             createBalls [ model.initBall, ( "blue", OnBoard pos2 ) ] [ model.portal ]
     in
-    { model | line = Just line, balls = balls, duration = durationFromBalls balls }
+    { model | line = Just line, balls = balls, ghosts = ghosts, duration = durationFromBalls balls }
 
 
 togglePause : Bool -> Model -> ( Model, Cmd Msg )
