@@ -4,6 +4,7 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
+import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -161,7 +162,7 @@ type alias Model =
     , paused : Bool
     , line : Maybe Line
     , balls : List Ball
-    , duration : Float
+    , duration : Int
     , portal : Portal
     , initBall : ( String, BallPosition )
     , ghosts : List Ball
@@ -555,17 +556,20 @@ indexedPositionFrom x v t idx =
     }
 
 
-durationFromBalls : List Ball -> Float
+durationFromBalls : List Ball -> Int
 durationFromBalls balls =
-    balls
-        |> List.foldl
+    let
+      maxDuration = balls
+        |> List.map
             (\ball ->
-                \maxDur ->
-                    ball.movements
-                        |> Maybe.withDefault []
-                        |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
+                ball.movements
+                    |> Maybe.withDefault []
+                    |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
             )
-            0.0
+        |> List.maximum
+        |> Maybe.withDefault 0.0
+    in
+      ceiling (maxDuration / 1000.0) * 1000
 
 
 init : () -> ( Model, Cmd Msg )
@@ -782,7 +786,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if model.paused then
+    if (model.paused || model.relativeTime >= model.duration) then
         Sub.none
 
     else
@@ -796,11 +800,9 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     let
-        duration =
-            model.duration
 
         maxRange =
-            ceiling (duration / 1000.0) * 1000
+            model.duration
 
         relTimeString =
             Basics.min model.relativeTime maxRange |> String.fromInt
