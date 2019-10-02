@@ -51,22 +51,47 @@ vaZero =
 
 
 type alias BallMovement =
-    { endPos : Vec2
-    , startVelocity : VelAcc
+    { endPos : Maybe Vec2
+    , startVelocity : Maybe VelAcc
     , duration : Float
     }
 
 
-type alias BallPosition =
+type BallPosition
+    = OnBoard BallOnBoard
+    | Vanished Float
+
+
+type alias BallOnBoard =
     { t : Float
     , x : Vec2
     , va : VelAcc
     }
 
 
+posXVA : BallPosition -> Maybe ( Vec2, VelAcc )
+posXVA pos =
+    case pos of
+        Vanished _ ->
+            Nothing
+
+        OnBoard { t, x, va } ->
+            Just ( x, va )
+
+
+posT : BallPosition -> Float
+posT pos =
+    case pos of
+        Vanished t ->
+            t
+
+        OnBoard { t, x, va } ->
+            t
+
+
 type alias Ball =
     { color : String
-    , initPosition : Vec2
+    , initPosition : Maybe Vec2
     , initTime : Float
     , movements : Maybe (List BallMovement)
     }
@@ -143,7 +168,7 @@ type alias Model =
     }
 
 
-zeroTimePosition : BallPosition -> BallPosition
+zeroTimePosition : BallOnBoard -> BallOnBoard
 zeroTimePosition pos =
     ballPosAtT pos 0.0
 
@@ -176,7 +201,7 @@ createBalls initialState portals =
 -- assumes the last postion is the stopped ball
 
 
-movementsFromPositions : Nonempty BallPosition -> ( Vec2, Float, List BallMovement )
+movementsFromPositions : Nonempty BallPosition -> ( Maybe Vec2, Float, List BallMovement )
 movementsFromPositions positions =
     let
         firstP =
@@ -186,10 +211,10 @@ movementsFromPositions positions =
             positions |> NE.tail
 
         initPosition =
-            firstP.x
+            firstP |> posXVA |> Maybe.map Tuple.first
 
         initTime =
-            firstP.t
+            firstP |> posT
 
         movements =
             tail
@@ -197,7 +222,11 @@ movementsFromPositions positions =
                     (\thisP ->
                         \( previousP, movementsSoFar ) ->
                             ( thisP
-                            , { endPos = thisP.x, startVelocity = previousP.va, duration = thisP.t - previousP.t } :: movementsSoFar
+                            , { endPos = thisP |> posXVA |> Maybe.map Tuple.first
+                              , startVelocity = previousP |> posXVA |> Maybe.map Tuple.second
+                              , duration = (thisP |> posT) - (previousP |> posT)
+                              }
+                                :: movementsSoFar
                             )
                     )
                     ( firstP, [] )
@@ -207,7 +236,7 @@ movementsFromPositions positions =
     ( initPosition, initTime, movements )
 
 
-interceptTime : BallPosition -> BallPosition -> List Float
+interceptTime : BallOnBoard -> BallOnBoard -> List Float
 interceptTime position1 position2 =
     if (position1 |> endPositionForStopTime) < position2.t || (position2 |> endPositionForStopTime) < position1.t then
         []
@@ -262,44 +291,52 @@ interceptTime position1 position2 =
 
 
 collisionsFromPositions : IndexedBallPosition -> IndexedBallPosition -> Maybe BallCollision
-collisionsFromPositions position1 position2 =
-    interceptTime position1.pos position2.pos
-        |> List.sort
-        |> List.foldl
-            (\t ->
-                \collision ->
-                    case collision of
-                        Just _ ->
-                            collision
-
-                        Nothing ->
-                            let
-                                candidatePosition1 =
-                                    ballPosAtT position1.pos t
-
-                                candidatePosition2 =
-                                    ballPosAtT position2.pos t
-
-                                xt =
-                                    Math.Vector2.sub candidatePosition1.x candidatePosition2.x
-
-                                vt =
-                                    Math.Vector2.sub candidatePosition1.va.v candidatePosition2.va.v
-
-                                dp =
-                                    Math.Vector2.dot xt vt
-                            in
-                            if dp < 0 then
-                                let
-                                    ( postCollision1, postCollision2 ) =
-                                        positionsAfterCollision candidatePosition1 candidatePosition2
-                                in
-                                Just (BallCollision { position1 | pos = postCollision1 } { position2 | pos = postCollision2 } t)
-
-                            else
-                                Nothing
-            )
+collisionsFromPositions iPosition1 iPosition2 =
+    case ( iPosition1.pos, iPosition2.pos ) of
+        ( Vanished _, _ ) ->
             Nothing
+
+        ( _, Vanished _ ) ->
+            Nothing
+
+        ( OnBoard position1, OnBoard position2 ) ->
+            interceptTime position1 position2
+                |> List.sort
+                |> List.foldl
+                    (\t ->
+                        \collision ->
+                            case collision of
+                                Just _ ->
+                                    collision
+
+                                Nothing ->
+                                    let
+                                        candidatePosition1 =
+                                            ballPosAtT position1 t
+
+                                        candidatePosition2 =
+                                            ballPosAtT position2 t
+
+                                        xt =
+                                            Math.Vector2.sub candidatePosition1.x candidatePosition2.x
+
+                                        vt =
+                                            Math.Vector2.sub candidatePosition1.va.v candidatePosition2.va.v
+
+                                        dp =
+                                            Math.Vector2.dot xt vt
+                                    in
+                                    if dp < 0 then
+                                        let
+                                            ( postCollision1, postCollision2 ) =
+                                                positionsAfterCollision candidatePosition1 candidatePosition2
+                                        in
+                                        Just (BallCollision { iPosition1 | pos = OnBoard postCollision1 } { iPosition2 | pos = OnBoard postCollision2 } t)
+
+                                    else
+                                        Nothing
+                    )
+                    Nothing
 
 
 collisionCandidates : IndexedBallPosition -> List ( IndexedBallPosition, List BallCollision ) -> List ( IndexedBallPosition, List BallCollision )
@@ -315,7 +352,7 @@ collisionCandidates position otherPositions =
     ( position, newCollisions ) :: otherPositions
 
 
-positionsAfterCollision : BallPosition -> BallPosition -> ( BallPosition, BallPosition )
+positionsAfterCollision : BallOnBoard -> BallOnBoard -> ( BallOnBoard, BallOnBoard )
 positionsAfterCollision pos1 pos2 =
     let
         v1MinusV2 =
@@ -350,25 +387,30 @@ possiblePortalJumps portals balls =
                 balls
                     |> List.concatMap
                         (\ball ->
-                            let
-                                times =
-                                    interceptTime { t = 0, x = portal.entrance, va = vaZero } ball.pos
-                            in
-                            times
-                                |> List.map
-                                    (\t ->
-                                        let
-                                            enteringPos =
-                                                ballPosAtT ball.pos t
+                            case ball.pos of
+                                Vanished _ ->
+                                    []
 
-                                            exitingPos =
-                                                { enteringPos
-                                                    | x = portal.exit
-                                                    , va = rotateVelAcc portal.rotation enteringPos.va
-                                                }
-                                        in
-                                        ( { ball | pos = exitingPos }, t )
-                                    )
+                                OnBoard pos ->
+                                    let
+                                        times =
+                                            interceptTime { t = 0, x = portal.entrance, va = vaZero } pos
+                                    in
+                                    times
+                                        |> List.map
+                                            (\t ->
+                                                let
+                                                    enteringPos =
+                                                        ballPosAtT pos t
+
+                                                    exitingPos =
+                                                        { enteringPos
+                                                            | x = portal.exit
+                                                            , va = rotateVelAcc portal.rotation enteringPos.va
+                                                        }
+                                                in
+                                                ( { ball | pos = OnBoard exitingPos }, t )
+                                            )
                         )
             )
 
@@ -391,16 +433,29 @@ nextChanges positions portals =
 
         nextStop =
             indexedPositions
-                |> List.filter (\pos -> pos.pos.va.stopTime > 0)
-                |> minimumBy (\pos -> pos.pos |> endPositionForStopTime)
+                |> List.filterMap
+                    (\iPos ->
+                        case iPos.pos of
+                            Vanished _ ->
+                                Nothing
+
+                            OnBoard pos ->
+                                if pos.va.stopTime > 0 then
+                                    Just ( iPos, pos )
+
+                                else
+                                    Nothing
+                    )
+                |> minimumBy (\( _, pos ) -> pos |> endPositionForStopTime)
                 |> Maybe.map
-                    (\pos ->
-                        { pos
+                    (\( iPos, pos ) ->
+                        { iPos
                             | pos =
-                                { x = posAtT pos.pos.x pos.pos.va.stopTime pos.pos.va
-                                , va = vaZero
-                                , t = pos.pos.t + pos.pos.va.stopTime
-                                }
+                                OnBoard
+                                    { x = posAtT pos.x pos.va.stopTime pos.va
+                                    , va = vaZero
+                                    , t = pos.t + pos.va.stopTime
+                                    }
                         }
                     )
 
@@ -412,7 +467,7 @@ nextChanges positions portals =
             possiblePortalJumps portals indexedPositions |> minimumBy Tuple.second
 
         nextChange =
-            [ nextStop |> Maybe.map (\ns -> ( ns.pos.t, Stop ns ))
+            [ nextStop |> Maybe.map (\ns -> ( ns.pos |> posT, Stop ns ))
             , nextCollision |> Maybe.map (\nc -> ( nc.t, Collision nc ))
             , nextPortalJump |> Maybe.map (\np -> ( np |> Tuple.second, PortalJump np ))
             ]
@@ -457,7 +512,7 @@ generatePositions portals ballPositions =
                 )
 
 
-endPositionForStopTime : BallPosition -> Float
+endPositionForStopTime : BallOnBoard -> Float
 endPositionForStopTime pos =
     if pos.va.stopTime == 0.0 then
         1 / 0
@@ -484,21 +539,6 @@ accFromV =
     normalize >> Math.Vector2.scale -accIntensity
 
 
-movementFrom : Vec2 -> Vec2 -> BallMovement
-movementFrom x0 v0 =
-    let
-        va =
-            avFromV v0
-
-        duration =
-            va.stopTime
-    in
-    { endPos = posAtT x0 duration va
-    , startVelocity = va
-    , duration = duration
-    }
-
-
 indexedPositionFrom : Vec2 -> Vec2 -> Float -> Int -> IndexedBallPosition
 indexedPositionFrom x v t idx =
     let
@@ -507,10 +547,11 @@ indexedPositionFrom x v t idx =
     in
     { idx = idx
     , pos =
-        { t = t
-        , x = x
-        , va = va
-        }
+        OnBoard
+            { t = t
+            , x = x
+            , va = va
+            }
     }
 
 
@@ -534,7 +575,7 @@ init _ =
             vec2 0.2 0.3
 
         initBall =
-            ( "red", BallPosition 1500.0 (vec2 100 100) (avFromV v1) )
+            ( "red", OnBoard { t = 1500.0, x = vec2 100 100, va = avFromV v1 } )
 
         portal =
             createPortal (vec2 500 100) (vec2 100 800) 20 5000
@@ -616,7 +657,7 @@ updateWithNewLine model line =
             { t = line.time, x = line.s, va = avFromV initV }
 
         balls =
-            createBalls [ model.initBall, ( "blue", pos2 ) ] [ model.portal ]
+            createBalls [ model.initBall, ( "blue", OnBoard pos2 ) ] [ model.portal ]
     in
     { model | line = Just line, balls = balls, duration = durationFromBalls balls }
 
@@ -841,7 +882,7 @@ vaAtT va t =
     }
 
 
-ballPosAtT : BallPosition -> Float -> BallPosition
+ballPosAtT : BallOnBoard -> Float -> BallOnBoard
 ballPosAtT ball t =
     { t = t
     , x = posAtT ball.x (t - ball.t) ball.va
@@ -895,22 +936,28 @@ svgBall ball time =
                                 else
                                     { t = state.t, startPos = state.startPos, va = mvmt.startVelocity, done = True }
                         )
-                        { t = timeAdjusted, startPos = ball.initPosition, va = vaZero, done = False }
+                        { t = timeAdjusted, startPos = ball.initPosition, va = Just vaZero, done = False }
 
             pos =
-                posAtT startPos t va
+                Maybe.map2 (\sp -> \vva -> posAtT sp t vva) startPos va
 
             xString =
-                pos |> Math.Vector2.getX |> round |> String.fromInt
+                pos |> Maybe.map (Math.Vector2.getX >> round >> String.fromInt)
 
             yString =
-                pos |> Math.Vector2.getY |> round |> String.fromInt
+                pos |> Maybe.map (Math.Vector2.getY >> round >> String.fromInt)
+
+            xys =
+                [ Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString ] |> List.filterMap identity
         in
-        [ Svg.circle
-            [ cx xString
-            , cy yString
-            , r "11"
-            , fill ball.color
-            ]
-            []
-        ]
+        xys
+            |> List.map
+                (\( xs, ys ) ->
+                    Svg.circle
+                        [ cx xs
+                        , cy ys
+                        , r "11"
+                        , fill ball.color
+                        ]
+                        []
+                )
