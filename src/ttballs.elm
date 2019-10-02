@@ -645,7 +645,7 @@ vecToExitStartingPoint portal x =
                 else
                     Math.Vector2.direction x portal.exit
         in
-        Just (Math.Vector2.add portal.exit (Math.Vector2.scale 15.0 direction))
+        Just (Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction))
 
 
 updateWithNewLine : Model -> Line -> Model
@@ -856,11 +856,32 @@ svgLine maybeLine =
     maybeLine
         |> Maybe.map
             (\{ s, e, time, fixed } ->
-                [ Svg.line
-                    [ x1 (s |> getX |> String.fromFloat)
-                    , y1 (s |> getY |> String.fromFloat)
-                    , x2 (e |> getX |> String.fromFloat)
-                    , y2 (e |> getY |> String.fromFloat)
+                let
+                    x1Str =
+                        s |> getX |> String.fromFloat
+
+                    y1Str =
+                        s |> getY |> String.fromFloat
+
+                    x2Str =
+                        e |> getX |> String.fromFloat
+
+                    y2Str =
+                        e |> getY |> String.fromFloat
+                in
+                [ Svg.circle
+                    [ cx x1Str
+                    , cy y1Str
+                    , r "10"
+                    , fill "green"
+                    , fillOpacity "0.5"
+                    ]
+                    []
+                , Svg.line
+                    [ x1 x1Str
+                    , y1 y1Str
+                    , x2 x2Str
+                    , y2 y2Str
                     , stroke "black"
                     ]
                     []
@@ -903,14 +924,14 @@ svgPortal portal =
     [ Svg.circle
         [ cx (portal.entrance |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (portal.entrance |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "20"
+        , r "30"
         , fill "yellow"
         ]
         []
     , Svg.circle
         [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "20"
+        , r "30"
         , fill "yellow"
         ]
         []
