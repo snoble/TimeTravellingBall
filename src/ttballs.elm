@@ -666,6 +666,15 @@ updateWithNewLine model line =
     { model | line = Just line, balls = balls, duration = durationFromBalls balls }
 
 
+togglePause : Bool -> Model -> ( Model, Cmd Msg )
+togglePause paused model =
+    if paused then
+        ( { model | paused = not paused, playTime = Nothing }, Task.perform Play Time.now )
+
+    else
+        ( { model | paused = not paused, playTime = Nothing }, Cmd.none )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -676,9 +685,11 @@ update msg model =
                         |> Maybe.map (\t0 -> { model | relativeTime = Time.posixToMillis newTime - Time.posixToMillis t0 })
                         |> Maybe.withDefault model
             in
-            ( newModel
-            , Cmd.none
-            )
+            if newModel.relativeTime >= newModel.duration then
+                togglePause False newModel
+
+            else
+                ( newModel, Cmd.none )
 
         Play t ->
             ( { model | playTime = Just (Time.posixToMillis t - model.relativeTime |> Time.millisToPosix) }
@@ -686,11 +697,7 @@ update msg model =
             )
 
         Pause paused ->
-            if paused then
-                ( { model | paused = not paused, playTime = Nothing }, Task.perform Play Time.now )
-
-            else
-                ( { model | paused = not paused, playTime = Nothing }, Cmd.none )
+            togglePause paused model
 
         MouseDownEvent event ->
             ( if event.isPrimary then
