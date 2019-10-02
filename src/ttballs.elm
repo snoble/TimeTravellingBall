@@ -176,11 +176,16 @@ zeroTimePosition pos =
 createBalls : List ( String, BallPosition ) -> List Portal -> List Ball
 createBalls initialState portals =
     let
-        movementData =
+        initDict =
             initialState
                 |> List.indexedMap (\i -> \( _, pos ) -> ( i, NE.fromElement pos ))
                 |> Dict.fromList
-                |> generatePositions portals
+
+        ( movementDict, ghostDict ) =
+            ( initDict, Dict.empty ) |> generatePositions portals
+
+        movementData =
+            movementDict
                 |> Dict.values
                 |> List.map movementsFromPositions
     in
@@ -415,7 +420,7 @@ possiblePortalJumps portals balls =
             )
 
 
-nextChanges : List BallPosition -> List Portal -> List IndexedBallPosition
+nextChanges : List BallPosition -> List Portal -> ( List IndexedBallPosition, List IndexedBallPosition )
 nextChanges positions portals =
     let
         indexedPositions =
@@ -477,16 +482,16 @@ nextChanges positions portals =
     in
     case nextChange of
         Nothing ->
-            []
+            ( [], [] )
 
         Just (Stop ns) ->
-            [ ns ]
+            ( [ ns ], [] )
 
         Just (Collision nc) ->
-            [ nc.ball1, nc.ball2 ]
+            ( [ nc.ball1, nc.ball2 ], [] )
 
         Just (PortalJump ( ball, t )) ->
-            [ { ball | pos = Vanished t } ]
+            ( [ { ball | pos = Vanished t } ], [] )
 
 
 type NextChange
@@ -495,21 +500,35 @@ type NextChange
     | PortalJump ( IndexedBallPosition, Float )
 
 
-generatePositions : List Portal -> Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
-generatePositions portals ballPositions =
-    case nextChanges (ballPositions |> Dict.values |> List.map NE.head) portals of
-        [] ->
-            ballPositions |> Dict.map (\_ -> NE.reverse)
+updateBallDict : List IndexedBallPosition -> Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
+updateBallDict indexedPositions ballDict =
+    indexedPositions
+        |> List.foldl
+            (\{ idx, pos } ->
+                Dict.update idx (Maybe.map (NE.cons pos) >> Maybe.withDefault (NE.fromElement pos) >> Just)
+            )
+            ballDict
 
-        indexedPositions ->
+
+generatePositions : List Portal -> ( Dict Int (Nonempty BallPosition), Dict Int (Nonempty BallPosition) ) -> ( Dict Int (Nonempty BallPosition), Dict Int (Nonempty BallPosition) )
+generatePositions portals ( ballPositions, ghosts ) =
+    let
+        ( newPositions, newGhosts ) =
+            nextChanges (ballPositions |> Dict.values |> List.map NE.head) portals
+
+        resultGhosts =
+            ghosts |> updateBallDict newGhosts
+
+        resultPositions =
+            ballPositions |> updateBallDict newPositions
+    in
+    case newPositions of
+        [] ->
+            ( resultPositions |> Dict.map (\_ -> NE.reverse), resultGhosts |> Dict.map (\_ -> NE.reverse) )
+
+        _ ->
             generatePositions portals
-                (indexedPositions
-                    |> List.foldl
-                        (\{ idx, pos } ->
-                            Dict.update idx (Maybe.map (NE.cons pos))
-                        )
-                        ballPositions
-                )
+                ( resultPositions, resultGhosts )
 
 
 endPositionForStopTime : BallOnBoard -> Float
