@@ -486,7 +486,7 @@ nextChanges positions portals =
             [ nc.ball1, nc.ball2 ]
 
         Just (PortalJump ( ball, t )) ->
-            []
+            [ { ball | pos = Vanished t } ]
 
 
 type NextChange
@@ -558,17 +558,18 @@ indexedPositionFrom x v t idx =
 durationFromBalls : List Ball -> Int
 durationFromBalls balls =
     let
-      maxDuration = balls
-        |> List.map
-            (\ball ->
-                ball.movements
-                    |> Maybe.withDefault []
-                    |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
-            )
-        |> List.maximum
-        |> Maybe.withDefault 0.0
+        maxDuration =
+            balls
+                |> List.map
+                    (\ball ->
+                        ball.movements
+                            |> Maybe.withDefault []
+                            |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
+                    )
+                |> List.maximum
+                |> Maybe.withDefault 0.0
     in
-      ceiling (maxDuration / 1000.0) * 1000
+    ceiling (maxDuration / 1000.0) * 1000
 
 
 init : () -> ( Model, Cmd Msg )
@@ -581,7 +582,7 @@ init _ =
             ( "red", OnBoard { t = 1500.0, x = vec2 100 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 500 100) (vec2 100 800) 20 5000
+            createPortal (vec2 415 600) (vec2 100 800) 20 5000
 
         balls =
             createBalls
@@ -785,7 +786,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if (model.paused || model.relativeTime >= model.duration) then
+    if model.paused || model.relativeTime >= model.duration then
         Sub.none
 
     else
@@ -799,7 +800,6 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     let
-
         maxRange =
             model.duration
 
