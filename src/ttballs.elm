@@ -4,7 +4,6 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
-import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
