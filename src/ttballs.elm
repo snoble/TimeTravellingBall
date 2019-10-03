@@ -93,7 +93,7 @@ type alias Ball =
     { color : String
     , initPosition : Maybe Vec2
     , initTime : Float
-    , movements : Maybe (List BallMovement)
+    , movements : List BallMovement
     }
 
 
@@ -196,7 +196,7 @@ createBalls initialState portals =
                         { color = color
                         , initPosition = initialPosition
                         , initTime = t
-                        , movements = Just movements
+                        , movements = movements
                         }
                 )
                 movementData
@@ -217,7 +217,7 @@ createBalls initialState portals =
                         { color = color
                         , initPosition = initialPosition
                         , initTime = t
-                        , movements = Just movements
+                        , movements = movements
                         }
                     )
     in
@@ -604,7 +604,6 @@ durationFromBalls balls =
                 |> List.map
                     (\ball ->
                         ball.movements
-                            |> Maybe.withDefault []
                             |> List.foldl (\mvmt -> \totalDur -> totalDur + mvmt.duration) ball.initTime
                     )
                 |> List.maximum
@@ -990,7 +989,7 @@ svgBall ball time =
                 time - ball.initTime
 
             movements =
-                ball.movements |> Maybe.withDefault []
+                ball.movements
 
             { t, startPos, va, done } =
                 movements
