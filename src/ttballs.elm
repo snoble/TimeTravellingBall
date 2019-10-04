@@ -632,7 +632,7 @@ durationFromBalls balls =
                 |> List.maximum
                 |> Maybe.withDefault 0.0
     in
-    ceiling (maxDuration / 1000.0) * 1000
+    ceiling (maxDuration / 3000.0) * 3000
 
 
 init : () -> ( Model, Cmd Msg )
@@ -747,7 +747,7 @@ updateDuration model newTime =
                     (durationAnimation.end - durationAnimation.start) |> toFloat
 
                 rate =
-                    0.1
+                    0.5
 
                 ( duration, targetDuration ) =
                     if timePassed * rate >= abs diff then
