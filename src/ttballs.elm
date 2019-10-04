@@ -44,7 +44,11 @@ type alias VelAcc =
 
 rotateVelAcc : (Vec2 -> Vec2) -> VelAcc -> VelAcc
 rotateVelAcc fn va =
-    { va | v = fn va.v, a = fn va.a }
+    let
+        _ =
+            Debug.log "va" va
+    in
+    Debug.log "va2" { va | v = fn va.v, a = fn va.a }
 
 
 vaZero =
@@ -129,7 +133,7 @@ createRotation : Float -> Vec2 -> Vec2
 createRotation angle =
     let
         matrix =
-            Math.Matrix4.makeRotate angle (vec3 0 0 1)
+            Debug.log "matrix" (Math.Matrix4.makeRotate angle (vec3 0 0 1))
     in
     \v2 ->
         let
@@ -522,7 +526,7 @@ nextChanges positions portals =
                 ghostStop =
                     { idx = idx, pos = OnBoard { x = posAtT pos.x pos.va.stopTime pos.va, va = vaZero, t = pos.t + pos.va.stopTime } }
             in
-            ( [ { idx = idx, pos = Vanished t } ], [ghostAppear, ghostStop] )
+            ( [ { idx = idx, pos = Vanished t } ], [ ghostAppear, ghostStop ] )
 
 
 type alias PortalJumpParts =
@@ -638,7 +642,7 @@ init _ =
             ( "red", OnBoard { t = 1500.0, x = vec2 100 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 415 600) (vec2 100 800) 20 5000
+            createPortal (vec2 415 600) (vec2 100 800) (pi / 2) 2000
 
         ( balls, ghosts ) =
             createBalls
