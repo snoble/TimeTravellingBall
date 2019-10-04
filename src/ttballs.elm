@@ -4,7 +4,6 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
-import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -44,11 +43,7 @@ type alias VelAcc =
 
 rotateVelAcc : (Vec2 -> Vec2) -> VelAcc -> VelAcc
 rotateVelAcc fn va =
-    let
-        _ =
-            Debug.log "va" va
-    in
-    Debug.log "va2" { va | v = fn va.v, a = fn va.a }
+    { va | v = fn va.v, a = fn va.a }
 
 
 vaZero =
@@ -133,7 +128,7 @@ createRotation : Float -> Vec2 -> Vec2
 createRotation angle =
     let
         matrix =
-            Debug.log "matrix" (Math.Matrix4.makeRotate angle (vec3 0 0 1))
+            Math.Matrix4.makeRotate angle (vec3 0 0 1)
     in
     \v2 ->
         let
@@ -437,7 +432,7 @@ possiblePortalJumps portals balls =
 
                                                     exitingPos =
                                                         { enteringPos
-                                                            | x = portal.exit
+                                                            | x = Math.Vector2.add portal.exit (Math.Vector2.sub enteringPos.x portal.entrance |> portal.rotation)
                                                             , va = rotateVelAcc portal.rotation enteringPos.va
                                                             , t = enteringPos.t - portal.timeDelta
                                                         }
@@ -649,9 +644,6 @@ init _ =
                 [ initBall
                 ]
                 [ portal ]
-
-        _ =
-            Debug.log "ghosts" ghosts
 
         duration =
             durationFromBalls balls
@@ -972,6 +964,7 @@ vaAtT : VelAcc -> Float -> VelAcc
 vaAtT va t =
     { va
         | v = va.v |> Math.Vector2.add (Math.Vector2.scale t va.a)
+        , stopTime = va.stopTime - t
     }
 
 
