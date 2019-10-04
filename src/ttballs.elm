@@ -220,7 +220,7 @@ createBalls initialState portals =
                                 movementsFromPositions positions
 
                             color =
-                                "green"
+                                "red"
                         in
                         { color = color
                         , initPosition = initialPosition
@@ -724,7 +724,7 @@ updateWithNewLine model line =
             { t = line.time, x = line.s, va = avFromV initV }
 
         ( balls, ghosts ) =
-            createBalls [ model.initBall, ( "blue", OnBoard pos2 ) ] [ model.portal ]
+            createBalls [ model.initBall, ( "pink", OnBoard pos2 ) ] [ model.portal ]
 
         targetDuration =
             durationFromBalls balls
@@ -937,9 +937,9 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+            ((model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
                 ++ svgPortal model.portal
-                ++ (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
                 ++ svgLine model.line
             )
         ]
@@ -1029,11 +1029,29 @@ svgPortal portal =
         , fill "yellow"
         ]
         []
+    , Svg.mask [ id "exitMask" ]
+        [ Svg.rect
+            [ x (((portal.exit |> Math.Vector2.getX |> round) - 32) |> String.fromInt)
+            , y (((portal.exit |> Math.Vector2.getY |> round) - 32) |> String.fromInt)
+            , width (64 |> String.fromInt)
+            , height (64 |> String.fromInt)
+            , fill "white"
+            ]
+            []
+        , Svg.circle
+            [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
+            , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
+            , r "10"
+            , fill "black"
+            ]
+            []
+        ]
     , Svg.circle
         [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
         , r "32"
         , fill "yellow"
+        , Svg.Attributes.mask "url(#exitMask)"
         ]
         []
     ]
