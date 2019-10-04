@@ -156,6 +156,13 @@ type alias Line =
     }
 
 
+type alias DurationAnimation =
+    { start : Int
+    , end : Int
+    , startTime : Time.Posix
+    }
+
+
 type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
@@ -165,6 +172,7 @@ type alias Model =
     , portal : Portal
     , initBall : ( String, BallPosition )
     , ghosts : List Ball
+    , targetDuration : Maybe DurationAnimation
     }
 
 
@@ -656,6 +664,7 @@ init _ =
       , duration = duration
       , portal = portal
       , ghosts = ghosts
+      , targetDuration = Nothing
       }
     , Task.perform Play Time.now
     )
@@ -673,6 +682,7 @@ type Msg
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
     | ChangeLineTime (Maybe Int)
+    | SetTargetDuration Int Time.Posix
 
 
 pe2Vec2 : Mouse.Event -> Vec2
@@ -701,7 +711,7 @@ vecToExitStartingPoint portal x =
         Just (Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction))
 
 
-updateWithNewLine : Model -> Line -> Model
+updateWithNewLine : Model -> Line -> ( Model, Cmd Msg )
 updateWithNewLine model line =
     let
         distance =
@@ -715,8 +725,38 @@ updateWithNewLine model line =
 
         ( balls, ghosts ) =
             createBalls [ model.initBall, ( "blue", OnBoard pos2 ) ] [ model.portal ]
+
+        targetDuration =
+            durationFromBalls balls
     in
-    { model | line = Just line, balls = balls, ghosts = ghosts, duration = durationFromBalls balls }
+    ( { model | line = Just line, balls = balls, ghosts = ghosts }, Task.perform (SetTargetDuration targetDuration) Time.now )
+
+
+updateDuration : Model -> Time.Posix -> Model
+updateDuration model newTime =
+    case model.targetDuration of
+        Nothing ->
+            model
+
+        Just durationAnimation ->
+            let
+                timePassed =
+                    (Time.posixToMillis newTime - Time.posixToMillis durationAnimation.startTime) |> toFloat
+
+                diff =
+                    (durationAnimation.end - durationAnimation.start) |> toFloat
+
+                rate =
+                    0.1
+
+                ( duration, targetDuration ) =
+                    if timePassed * rate >= abs diff then
+                        ( durationAnimation.end, Nothing )
+
+                    else
+                        ( durationAnimation.start + round (timePassed * rate * diff / abs diff), Just durationAnimation )
+            in
+            { model | duration = duration, targetDuration = targetDuration }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -724,8 +764,11 @@ update msg model =
     case msg of
         Tick newTime ->
             let
+                modelDur =
+                    updateDuration model newTime
+
                 newModel =
-                    model.playTime
+                    modelDur.playTime
                         |> Maybe.map
                             (\t0 ->
                                 let
@@ -733,16 +776,16 @@ update msg model =
                                         Time.posixToMillis newTime - Time.posixToMillis t0
 
                                     ( relativeTime, playTime ) =
-                                        if rt > model.duration then
+                                        if rt > modelDur.duration then
                                             ( 0, Just newTime )
 
                                         else
                                             ( rt, Just t0 )
                                 in
-                                { model | relativeTime = relativeTime, playTime = playTime }
+                                { modelDur | relativeTime = relativeTime, playTime = playTime }
                             )
             in
-            ( newModel |> Maybe.withDefault model, Cmd.none )
+            ( newModel |> Maybe.withDefault modelDur, Cmd.none )
 
         Play t ->
             ( { model | playTime = Just (Time.posixToMillis t - model.relativeTime |> Time.millisToPosix) }
@@ -796,36 +839,32 @@ update msg model =
             )
 
         MouseUpEvent event ->
-            ( if event.isPrimary then
+            if event.isPrimary then
                 case model.line of
                     Just line ->
                         updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
 
                     Nothing ->
-                        model
+                        ( model, Cmd.none )
 
-              else
-                model
-            , Cmd.none
-            )
+            else
+                ( model, Cmd.none )
 
         MouseLeaveEvent event ->
-            ( if event.isPrimary then
+            if event.isPrimary then
                 case model.line of
                     Just line ->
                         updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
 
                     Nothing ->
-                        model
+                        ( model, Cmd.none )
 
-              else
-                model
-            , Cmd.none
-            )
+            else
+                ( model, Cmd.none )
 
         ChangeLineTime lt ->
             let
-                newModel =
+                ( newModel, cmd ) =
                     Maybe.map2
                         (\t ->
                             \line ->
@@ -833,9 +872,12 @@ update msg model =
                         )
                         (lt |> Maybe.map toFloat)
                         model.line
-                        |> Maybe.withDefault model
+                        |> Maybe.withDefault ( model, Cmd.none )
             in
-            ( newModel, Cmd.none )
+            ( newModel, cmd )
+
+        SetTargetDuration duration t ->
+            ( { model | targetDuration = Just { start = model.duration, end = duration, startTime = t } }, Cmd.none )
 
 
 
