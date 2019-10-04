@@ -14,6 +14,7 @@ import List.Nonempty as NE exposing (Nonempty)
 import Math.Matrix4
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Math.Vector3 exposing (vec3)
+import Maybe.Extra exposing (orElse)
 import Platform.Sub as Sub
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
@@ -725,10 +726,23 @@ update msg model =
             let
                 newModel =
                     model.playTime
-                        |> Maybe.map (\t0 -> { model | relativeTime = (Time.posixToMillis newTime - Time.posixToMillis t0) |> modBy model.duration })
-                        |> Maybe.withDefault model
+                        |> Maybe.map
+                            (\t0 ->
+                                let
+                                    rt =
+                                        Time.posixToMillis newTime - Time.posixToMillis t0
+
+                                    ( relativeTime, playTime ) =
+                                        if rt > model.duration then
+                                            ( 0, Just newTime )
+
+                                        else
+                                            ( rt, Just t0 )
+                                in
+                                { model | relativeTime = relativeTime, playTime = playTime }
+                            )
             in
-            ( newModel, Cmd.none )
+            ( newModel |> Maybe.withDefault model, Cmd.none )
 
         Play t ->
             ( { model | playTime = Just (Time.posixToMillis t - model.relativeTime |> Time.millisToPosix) }
@@ -742,17 +756,19 @@ update msg model =
                         pe2Vec2 event
 
                     line =
-                        v |> vecToExitStartingPoint model.portal |> Maybe.map (\s -> Line s v (model.relativeTime |> toFloat) False)
+                        v
+                            |> vecToExitStartingPoint model.portal
+                            |> Maybe.map
+                                (\s ->
+                                    { s = s
+                                    , e = v
+                                    , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
+                                    , fixed = False
+                                    }
+                                )
+                            |> orElse model.line
                 in
-                { model
-                    | line =
-                        case line of
-                            Just _ ->
-                                line
-
-                            _ ->
-                                model.line
-                }
+                { model | line = line }
 
               else
                 model

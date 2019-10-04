@@ -12,6 +12,7 @@
             "elm/svg": "1.0.1",
             "elm/time": "1.0.0",
             "elm-community/list-extra": "8.2.2",
+            "elm-community/maybe-extra": "5.0.0",
             "elm-explorations/linear-algebra": "1.0.3",
             "evancz/elm-playground": "1.0.2",
             "harrysarson/elm-complex": "1.0.5",
