@@ -4,6 +4,7 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
+import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -406,7 +407,7 @@ positionsAfterCollision pos1 pos2 =
     ( newPos1, newPos2 )
 
 
-possiblePortalJumps : List Portal -> List IndexedBallPosition -> List ( IndexedBallPosition, Float )
+possiblePortalJumps : List Portal -> List IndexedBallPosition -> List PortalJumpParts
 possiblePortalJumps portals balls =
     portals
         |> List.concatMap
@@ -434,9 +435,10 @@ possiblePortalJumps portals balls =
                                                         { enteringPos
                                                             | x = portal.exit
                                                             , va = rotateVelAcc portal.rotation enteringPos.va
+                                                            , t = enteringPos.t - portal.timeDelta
                                                         }
                                                 in
-                                                ( { ball | pos = OnBoard exitingPos }, t )
+                                                { idx = ball.idx, t = t, pos = exitingPos }
                                             )
                         )
             )
@@ -491,12 +493,12 @@ nextChanges positions portals =
                 |> minimumBy (\col -> col.t)
 
         nextPortalJump =
-            possiblePortalJumps portals indexedPositions |> minimumBy Tuple.second
+            possiblePortalJumps portals indexedPositions |> minimumBy (\pj -> pj.t)
 
         nextChange =
             [ nextStop |> Maybe.map (\ns -> ( ns.pos |> posT, Stop ns ))
             , nextCollision |> Maybe.map (\nc -> ( nc.t, Collision nc ))
-            , nextPortalJump |> Maybe.map (\np -> ( np |> Tuple.second, PortalJump np ))
+            , nextPortalJump |> Maybe.map (\np -> ( np.t, PortalJump np ))
             ]
                 |> List.filterMap identity
                 |> minimumBy (\( t, _ ) -> t)
@@ -512,14 +514,28 @@ nextChanges positions portals =
         Just (Collision nc) ->
             ( [ nc.ball1, nc.ball2 ], [] )
 
-        Just (PortalJump ( ball, t )) ->
-            ( [ { ball | pos = Vanished t } ], [] )
+        Just (PortalJump { idx, t, pos }) ->
+            let
+                ghostAppear =
+                    { idx = idx, pos = OnBoard pos }
+
+                ghostStop =
+                    { idx = idx, pos = OnBoard { x = posAtT pos.x pos.va.stopTime pos.va, va = vaZero, t = pos.t + pos.va.stopTime } }
+            in
+            ( [ { idx = idx, pos = Vanished t } ], [ghostAppear, ghostStop] )
+
+
+type alias PortalJumpParts =
+    { idx : Int
+    , t : Float
+    , pos : BallOnBoard
+    }
 
 
 type NextChange
     = Stop IndexedBallPosition
     | Collision BallCollision
-    | PortalJump ( IndexedBallPosition, Float )
+    | PortalJump PortalJumpParts
 
 
 updateBallDict : List IndexedBallPosition -> Dict Int (Nonempty BallPosition) -> Dict Int (Nonempty BallPosition)
@@ -629,6 +645,9 @@ init _ =
                 [ initBall
                 ]
                 [ portal ]
+
+        _ =
+            Debug.log "ghosts" ghosts
 
         duration =
             durationFromBalls balls
@@ -884,8 +903,9 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            (svgPortal model.portal
-                ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+            ((model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                ++ svgPortal model.portal
+                ++ (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
                 ++ svgLine model.line
             )
         ]
