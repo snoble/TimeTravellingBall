@@ -158,7 +158,6 @@ type alias Line =
 type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
-    , paused : Bool
     , line : Maybe Line
     , balls : List Ball
     , duration : Int
@@ -650,7 +649,6 @@ init _ =
     in
     ( { relativeTime = 0
       , playTime = Nothing
-      , paused = False
       , line = Nothing
       , initBall = initBall
       , balls = balls
@@ -669,12 +667,11 @@ init _ =
 type Msg
     = Tick Time.Posix
     | Play Time.Posix
-    | Pause Bool
     | MouseDownEvent Mouse.Event
     | MouseMoveEvent Mouse.Event
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
-    | ChangeRelativeTime (Maybe Int)
+    | ChangeLineTime (Maybe Int)
 
 
 pe2Vec2 : Mouse.Event -> Vec2
@@ -721,15 +718,6 @@ updateWithNewLine model line =
     { model | line = Just line, balls = balls, ghosts = ghosts, duration = durationFromBalls balls }
 
 
-togglePause : Bool -> Model -> ( Model, Cmd Msg )
-togglePause paused model =
-    if paused then
-        ( { model | paused = not paused, playTime = Nothing }, Task.perform Play Time.now )
-
-    else
-        ( { model | paused = not paused, playTime = Nothing }, Cmd.none )
-
-
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -737,22 +725,15 @@ update msg model =
             let
                 newModel =
                     model.playTime
-                        |> Maybe.map (\t0 -> { model | relativeTime = Time.posixToMillis newTime - Time.posixToMillis t0 })
+                        |> Maybe.map (\t0 -> { model | relativeTime = (Time.posixToMillis newTime - Time.posixToMillis t0) |> modBy model.duration })
                         |> Maybe.withDefault model
             in
-            if newModel.relativeTime >= newModel.duration then
-                togglePause False newModel
-
-            else
-                ( newModel, Cmd.none )
+            ( newModel, Cmd.none )
 
         Play t ->
             ( { model | playTime = Just (Time.posixToMillis t - model.relativeTime |> Time.millisToPosix) }
             , Cmd.none
             )
-
-        Pause paused ->
-            togglePause paused model
 
         MouseDownEvent event ->
             ( if event.isPrimary then
@@ -826,20 +807,19 @@ update msg model =
             , Cmd.none
             )
 
-        ChangeRelativeTime rtw ->
-            case rtw of
-                Just rt ->
-                    ( { model | relativeTime = rt }
-                    , case model.playTime of
-                        Just _ ->
-                            Task.perform Play Time.now
-
-                        Nothing ->
-                            Cmd.none
-                    )
-
-                Nothing ->
-                    ( model, Cmd.none )
+        ChangeLineTime lt ->
+            let
+                newModel =
+                    Maybe.map2
+                        (\t ->
+                            \line ->
+                                updateWithNewLine model { line | time = t }
+                        )
+                        (lt |> Maybe.map toFloat)
+                        model.line
+                        |> Maybe.withDefault model
+            in
+            ( newModel, Cmd.none )
 
 
 
@@ -848,11 +828,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if model.paused || model.relativeTime >= model.duration then
-        Sub.none
-
-    else
-        Browser.Events.onAnimationFrame Tick
+    Browser.Events.onAnimationFrame Tick
 
 
 
@@ -870,7 +846,7 @@ view model =
     in
     div
         [ H.style "display" "grid"
-        , H.style "grid-template-rows" "max-content max-content 1fr"
+        , H.style "grid-template-rows" "max-content 2em 1fr"
         , H.style "height" "100%"
         , H.style "width" "100%"
         ]
@@ -879,19 +855,23 @@ view model =
             , H.min "0"
             , H.max (maxRange |> String.fromInt)
             , H.value relTimeString
-            , H.readonly model.paused
-            , onInput (String.toInt >> ChangeRelativeTime)
+            , H.readonly True
             ]
             []
-        , button [ onClick (Pause model.paused), H.readonly False, H.style "width" "2em" ]
-            [ Html.text
-                (if model.paused then
-                    "▶"
+        , case model.line of
+            Just _ ->
+                input
+                    [ H.type_ "range"
+                    , H.min "0"
+                    , H.max (maxRange |> String.fromInt)
+                    , H.readonly True
+                    , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
+                    , onInput (String.toInt >> ChangeLineTime)
+                    ]
+                    []
 
-                 else
-                    "⏸"
-                )
-            ]
+            Nothing ->
+                div [] []
         , svg
             [ Svg.Attributes.style "height:100%; width:100%"
             , Mouse.onDown MouseDownEvent
