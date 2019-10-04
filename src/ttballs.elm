@@ -963,20 +963,26 @@ svgLine maybeLine =
                     y2Str =
                         e |> getY |> String.fromFloat
                 in
-                [ Svg.circle
-                    [ cx x1Str
-                    , cy y1Str
-                    , r "3"
-                    , fill "blue"
-                    , fillOpacity "0.5"
-                    ]
-                    []
-                , Svg.line
+                [ Svg.line
                     [ x1 x1Str
                     , y1 y1Str
                     , x2 x2Str
                     , y2 y2Str
                     , stroke "black"
+                    ]
+                    []
+                , Svg.circle
+                    [ cx x1Str
+                    , cy y1Str
+                    , r "3"
+                    , fill "black"
+                    ]
+                    []
+                , Svg.circle
+                    [ cx x2Str
+                    , cy y2Str
+                    , r "3"
+                    , fill "black"
                     ]
                     []
                 ]
