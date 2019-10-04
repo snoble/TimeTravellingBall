@@ -685,7 +685,7 @@ pe2Vec2 event =
 
 vecToExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
 vecToExitStartingPoint portal x =
-    if Math.Vector2.distance x portal.exit > 20.0 then
+    if Math.Vector2.distance x portal.exit > 50.0 then
         Nothing
 
     else
@@ -783,7 +783,7 @@ update msg model =
             ( if event.isPrimary then
                 case model.line of
                     Just line ->
-                        updateWithNewLine model { line | fixed = True }
+                        updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
 
                     Nothing ->
                         model
@@ -797,7 +797,7 @@ update msg model =
             ( if event.isPrimary then
                 case model.line of
                     Just line ->
-                        updateWithNewLine model { line | fixed = True }
+                        updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
 
                     Nothing ->
                         model
@@ -908,8 +908,8 @@ svgLine maybeLine =
                 [ Svg.circle
                     [ cx x1Str
                     , cy y1Str
-                    , r "10"
-                    , fill "green"
+                    , r "3"
+                    , fill "blue"
                     , fillOpacity "0.5"
                     ]
                     []
@@ -961,14 +961,14 @@ svgPortal portal =
     [ Svg.circle
         [ cx (portal.entrance |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (portal.entrance |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "30"
+        , r "32"
         , fill "yellow"
         ]
         []
     , Svg.circle
         [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "30"
+        , r "32"
         , fill "yellow"
         ]
         []
