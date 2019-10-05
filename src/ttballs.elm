@@ -619,11 +619,11 @@ indexedPositionFrom x v t idx =
     }
 
 
-durationFromBalls : List Ball -> Int
-durationFromBalls balls =
+durationFromBalls : List Ball -> List Ball -> Int
+durationFromBalls balls ghosts =
     let
         maxDuration =
-            balls
+            (balls ++ ghosts)
                 |> List.map
                     (\ball ->
                         ball.movements
@@ -639,13 +639,13 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v1 =
-            vec2 0.18 0.7 |> Math.Vector2.scale 0.7
+            vec2 0.18 0.7 |> Math.Vector2.scale 0.65
 
         initBall =
             ( "red", OnBoard { t = 1000.0, x = vec2 300 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 500 800) (vec2 100 800) (3 * pi / 2) 1700
+            createPortal (vec2 500 800) (vec2 100 800) (3 * pi / 2) 2500
 
         ( balls, ghosts ) =
             createBalls
@@ -654,7 +654,7 @@ init _ =
                 [ portal ]
 
         duration =
-            durationFromBalls balls
+            durationFromBalls balls ghosts
     in
     ( { relativeTime = 0
       , playTime = Nothing
@@ -727,7 +727,7 @@ updateWithNewLine model line =
             createBalls [ model.initBall, ( "pink", OnBoard pos2 ) ] [ model.portal ]
 
         targetDuration =
-            durationFromBalls balls
+            durationFromBalls balls ghosts
     in
     ( { model | line = Just line, balls = balls, ghosts = ghosts }, Task.perform (SetTargetDuration targetDuration) Time.now )
 
