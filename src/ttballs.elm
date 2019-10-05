@@ -4,7 +4,6 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
-import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -664,7 +663,7 @@ init _ =
       , balls = balls
       , duration = duration
       , portal = portal
-      , ghosts = Debug.log "ghosts" ghosts
+      , ghosts = ghosts
       , targetDuration = Nothing
       }
     , Task.perform Play Time.now
