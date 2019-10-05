@@ -4,6 +4,7 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Events
 import Complex exposing (toCartesian)
+import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -639,13 +640,13 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v1 =
-            vec2 0.2 0.3
+            vec2 0.18 0.7 |> Math.Vector2.scale 0.7
 
         initBall =
-            ( "red", OnBoard { t = 1500.0, x = vec2 100 100, va = avFromV v1 } )
+            ( "red", OnBoard { t = 1000.0, x = vec2 300 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 415 600) (vec2 100 800) (pi / 2) 2000
+            createPortal (vec2 500 800) (vec2 100 800) (3 * pi / 2) 1700
 
         ( balls, ghosts ) =
             createBalls
@@ -663,7 +664,7 @@ init _ =
       , balls = balls
       , duration = duration
       , portal = portal
-      , ghosts = ghosts
+      , ghosts = Debug.log "ghosts" ghosts
       , targetDuration = Nothing
       }
     , Task.perform Play Time.now
@@ -747,7 +748,7 @@ updateDuration model newTime =
                     (durationAnimation.end - durationAnimation.start) |> toFloat
 
                 rate =
-                    0.5
+                    1.5
 
                 ( duration, targetDuration ) =
                     if timePassed * rate >= abs diff then
@@ -819,9 +820,9 @@ update msg model =
             )
 
         MouseMoveEvent event ->
-            ( if event.isPrimary then
-                { model
-                    | line =
+            if event.isPrimary then
+                let
+                    newLine =
                         model.line
                             |> Maybe.map
                                 (\line ->
@@ -831,12 +832,16 @@ update msg model =
                                     else
                                         { line | e = pe2Vec2 event }
                                 )
-                }
+                in
+                case newLine of
+                    Just line ->
+                        updateWithNewLine model line
 
-              else
-                model
-            , Cmd.none
-            )
+                    Nothing ->
+                        ( model, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         MouseUpEvent event ->
             if event.isPrimary then
