@@ -911,7 +911,7 @@ update msg model =
         CurrentViewport vp ->
             let
                 scaler =
-                    Basics.max
+                    Basics.min
                         (vp.viewport.height / model.spaceHeight)
                         (vp.viewport.width / model.spaceWidth)
 
