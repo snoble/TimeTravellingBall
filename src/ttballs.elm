@@ -5,7 +5,6 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Events
 import Complex exposing (toCartesian)
-import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -188,6 +187,8 @@ type alias Model =
     , targetDuration : Maybe DurationAnimation
     , viewport : Maybe Dom.Viewport
     , displayScaling : Maybe DisplayScaling
+    , spaceHeight : Float
+    , spaceWidth : Float
     }
 
 
@@ -682,6 +683,8 @@ init _ =
       , targetDuration = Nothing
       , viewport = Nothing
       , displayScaling = Nothing
+      , spaceHeight = 900
+      , spaceWidth = 600
       }
     , Cmd.batch
         [ Task.perform Play Time.now
@@ -697,22 +700,23 @@ init _ =
 type Msg
     = Tick Time.Posix
     | Play Time.Posix
-    | MouseDownEvent Mouse.Event
-    | MouseMoveEvent Mouse.Event
+    | MouseDownEvent DisplayScaling Mouse.Event
+    | MouseMoveEvent DisplayScaling Mouse.Event
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
     | ChangeLineTime (Maybe Int)
     | SetTargetDuration Int Time.Posix
     | CurrentViewport Dom.Viewport
+    | Resize
 
 
-pe2Vec2 : Mouse.Event -> Vec2
-pe2Vec2 event =
+pe2Vec2 : DisplayScaling -> Mouse.Event -> Vec2
+pe2Vec2 ds event =
     let
         ( x, y ) =
             event.pointer.offsetPos
     in
-    vec2 x y
+    vec2 x y |> ds.fromDisplay
 
 
 vecToExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
@@ -813,11 +817,11 @@ update msg model =
             , Cmd.none
             )
 
-        MouseDownEvent event ->
+        MouseDownEvent ds event ->
             ( if event.isPrimary then
                 let
                     v =
-                        pe2Vec2 event
+                        pe2Vec2 ds event
 
                     line =
                         v
@@ -839,7 +843,7 @@ update msg model =
             , Cmd.none
             )
 
-        MouseMoveEvent event ->
+        MouseMoveEvent ds event ->
             if event.isPrimary then
                 let
                     newLine =
@@ -850,7 +854,7 @@ update msg model =
                                         line
 
                                     else
-                                        { line | e = pe2Vec2 event }
+                                        { line | e = pe2Vec2 ds event }
                                 )
                 in
                 case newLine of
@@ -906,16 +910,27 @@ update msg model =
 
         CurrentViewport vp ->
             let
+                scaler =
+                    Basics.min
+                        (vp.viewport.height / model.spaceHeight)
+                        (vp.viewport.width / model.spaceWidth)
+
+                invScaler =
+                    1 / scaler
+
                 fromDisplay =
-                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 1 1 1))
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 invScaler invScaler 1))
 
                 toDisplay =
-                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 1 1 1))
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 scaler scaler 1))
 
                 displayScaling =
                     { fromDisplay = fromDisplay, toDisplay = toDisplay }
             in
             ( { model | viewport = Just vp, displayScaling = Just displayScaling }, Cmd.none )
+
+        Resize ->
+            ( model, Task.perform CurrentViewport Dom.getViewport )
 
 
 
@@ -924,7 +939,10 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Browser.Events.onAnimationFrame Tick
+    Sub.batch
+        [ Browser.Events.onAnimationFrame Tick
+        , Browser.Events.onResize (\_ -> \_ -> Resize)
+        ]
 
 
 
@@ -946,12 +964,12 @@ view model =
                     ( [], [] )
 
                 Just ds ->
-                    ( (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                        ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                        ++ svgPortal model.portal
-                        ++ svgLine model.line
-                    , [ Mouse.onDown MouseDownEvent
-                      , Mouse.onMove MouseMoveEvent
+                    ( (model.ghosts |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
+                        ++ (model.balls |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
+                        ++ svgPortal ds model.portal
+                        ++ svgLine ds model.line
+                    , [ Mouse.onDown (MouseDownEvent ds)
+                      , Mouse.onMove (MouseMoveEvent ds)
                       , Mouse.onUp MouseUpEvent
                       , Mouse.onLeave MouseLeaveEvent
                       ]
@@ -991,23 +1009,32 @@ view model =
         ]
 
 
-svgLine : Maybe Line -> List (Svg Msg)
-svgLine maybeLine =
+svgLine : DisplayScaling -> Maybe Line -> List (Svg Msg)
+svgLine ds maybeLine =
     maybeLine
         |> Maybe.map
             (\{ s, e, time, fixed } ->
                 let
+                    scaledS =
+                        ds.toDisplay s
+
+                    scaledE =
+                        ds.toDisplay e
+
                     x1Str =
-                        s |> getX |> String.fromFloat
+                        scaledS |> getX |> String.fromFloat
 
                     y1Str =
-                        s |> getY |> String.fromFloat
+                        scaledS |> getY |> String.fromFloat
 
                     x2Str =
-                        e |> getX |> String.fromFloat
+                        scaledE |> getX |> String.fromFloat
 
                     y2Str =
-                        e |> getY |> String.fromFloat
+                        scaledE |> getY |> String.fromFloat
+
+                    radius =
+                        vec2 3 0 |> ds.toDisplay |> getX
                 in
                 [ Svg.line
                     [ x1 x1Str
@@ -1020,14 +1047,14 @@ svgLine maybeLine =
                 , Svg.circle
                     [ cx x1Str
                     , cy y1Str
-                    , r "3"
+                    , r (radius |> String.fromFloat)
                     , fill "black"
                     ]
                     []
                 , Svg.circle
                     [ cx x2Str
                     , cy y2Str
-                    , r "3"
+                    , r (radius |> String.fromFloat)
                     , fill "black"
                     ]
                     []
@@ -1066,36 +1093,49 @@ ballPosAtT ball t =
     }
 
 
-svgPortal : Portal -> List (Svg Msg)
-svgPortal portal =
+svgPortal : DisplayScaling -> Portal -> List (Svg Msg)
+svgPortal ds portal =
+    let
+        outerRadius =
+            vec2 32 0 |> ds.toDisplay |> getX
+
+        innerRadius =
+            vec2 10 0 |> ds.toDisplay |> getX
+
+        entrance =
+            portal.entrance |> ds.toDisplay
+
+        exit =
+            portal.exit |> ds.toDisplay
+    in
     [ Svg.circle
-        [ cx (portal.entrance |> Math.Vector2.getX |> round |> String.fromInt)
-        , cy (portal.entrance |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "32"
+        [ cx (entrance |> Math.Vector2.getX |> round |> String.fromInt)
+        , cy (entrance |> Math.Vector2.getY |> round |> String.fromInt)
+        , r (outerRadius |> String.fromFloat)
         , fill "yellow"
         ]
         []
     , Svg.mask [ id "exitMask" ]
         [ Svg.rect
-            [ x (((portal.exit |> Math.Vector2.getX |> round) - 32) |> String.fromInt)
-            , y (((portal.exit |> Math.Vector2.getY |> round) - 32) |> String.fromInt)
-            , width (64 |> String.fromInt)
-            , height (64 |> String.fromInt)
+            [ x (((exit |> Math.Vector2.getX) - outerRadius) |> String.fromFloat)
+            , y (((exit |> Math.Vector2.getY) - outerRadius) |> String.fromFloat)
+            , width (outerRadius * 2 |> String.fromFloat)
+            , height (outerRadius * 2 |> String.fromFloat)
             , fill "white"
             ]
             []
         , Svg.circle
-            [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
-            , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
-            , r "10"
+            [ cx (exit |> Math.Vector2.getX |> round |> String.fromInt)
+            , cy (exit |> Math.Vector2.getY |> round |> String.fromInt)
+            , r (innerRadius |> String.fromFloat)
             , fill "black"
             ]
             []
         ]
     , Svg.circle
-        [ cx (portal.exit |> Math.Vector2.getX |> round |> String.fromInt)
-        , cy (portal.exit |> Math.Vector2.getY |> round |> String.fromInt)
-        , r "32"
+        [ cx (exit |> Math.Vector2.getX |> round |> String.fromInt)
+        , cy (exit |> Math.Vector2.getY |> round |> String.fromInt)
+        , r (outerRadius |> String.fromFloat)
         , fill "yellow"
         , Svg.Attributes.mask "url(#exitMask)"
         ]
@@ -1103,8 +1143,8 @@ svgPortal portal =
     ]
 
 
-svgBall : Ball -> Float -> List (Svg Msg)
-svgBall ball time =
+svgBall : DisplayScaling -> Ball -> Float -> List (Svg Msg)
+svgBall ds ball time =
     if time < ball.initTime then
         []
 
@@ -1133,7 +1173,7 @@ svgBall ball time =
                         { t = timeAdjusted, startPos = ball.initPosition, va = Just vaZero, done = False }
 
             pos =
-                Maybe.map2 (\sp -> \vva -> posAtT sp t vva) startPos va
+                Maybe.map2 (\sp -> \vva -> posAtT sp t vva |> ds.toDisplay) startPos va
 
             xString =
                 pos |> Maybe.map (Math.Vector2.getX >> round >> String.fromInt)
@@ -1143,6 +1183,9 @@ svgBall ball time =
 
             xys =
                 [ Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString ] |> List.filterMap identity
+
+            radius =
+                vec2 11 0 |> ds.toDisplay |> getX |> String.fromFloat
         in
         xys
             |> List.map
@@ -1150,7 +1193,7 @@ svgBall ball time =
                     Svg.circle
                         [ cx xs
                         , cy ys
-                        , r "11"
+                        , r radius
                         , fill ball.color
                         ]
                         []
