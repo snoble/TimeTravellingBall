@@ -127,18 +127,23 @@ type alias Portal =
     }
 
 
-createRotation : Float -> Vec2 -> Vec2
-createRotation angle =
-    let
-        matrix =
-            Math.Matrix4.makeRotate angle (vec3 0 0 1)
-    in
+matrix4Tofn2 : Math.Matrix4.Mat4 -> Vec2 -> Vec2
+matrix4Tofn2 matrix =
     \v2 ->
         let
             v3 =
                 Math.Matrix4.transform matrix (vec3 (getX v2) (getY v2) 0)
         in
         vec2 (Math.Vector3.getX v3) (Math.Vector3.getY v3)
+
+
+createRotation : Float -> Vec2 -> Vec2
+createRotation angle =
+    let
+        matrix =
+            Math.Matrix4.makeRotate angle (vec3 0 0 1)
+    in
+    matrix4Tofn2 matrix
 
 
 createPortal : Vec2 -> Vec2 -> Float -> Float -> Portal
@@ -165,6 +170,12 @@ type alias DurationAnimation =
     }
 
 
+type alias DisplayScaling =
+    { toDisplay : Vec2 -> Vec2
+    , fromDisplay : Vec2 -> Vec2
+    }
+
+
 type alias Model =
     { relativeTime : Int
     , playTime : Maybe Time.Posix
@@ -176,6 +187,7 @@ type alias Model =
     , ghosts : List Ball
     , targetDuration : Maybe DurationAnimation
     , viewport : Maybe Dom.Viewport
+    , displayScaling : Maybe DisplayScaling
     }
 
 
@@ -669,6 +681,7 @@ init _ =
       , ghosts = ghosts
       , targetDuration = Nothing
       , viewport = Nothing
+      , displayScaling = Nothing
       }
     , Cmd.batch
         [ Task.perform Play Time.now
@@ -892,7 +905,17 @@ update msg model =
             ( { model | targetDuration = Just { start = model.duration, end = duration, startTime = t } }, Cmd.none )
 
         CurrentViewport vp ->
-            ( {model | viewport = Just vp}, Cmd.none )
+            let
+                fromDisplay =
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 1 1 1))
+
+                toDisplay =
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 1 1 1))
+
+                displayScaling =
+                    { fromDisplay = fromDisplay, toDisplay = toDisplay }
+            in
+            ( { model | viewport = Just vp, displayScaling = Just displayScaling }, Cmd.none )
 
 
 
@@ -916,6 +939,23 @@ view model =
 
         relTimeString =
             Basics.min model.relativeTime maxRange |> String.fromInt
+
+        ( svgObjects, svgAttributes ) =
+            case model.displayScaling of
+                Nothing ->
+                    ( [], [] )
+
+                Just ds ->
+                    ( (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                        ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                        ++ svgPortal model.portal
+                        ++ svgLine model.line
+                    , [ Mouse.onDown MouseDownEvent
+                      , Mouse.onMove MouseMoveEvent
+                      , Mouse.onUp MouseUpEvent
+                      , Mouse.onLeave MouseLeaveEvent
+                      ]
+                    )
     in
     div
         [ H.style "display" "grid"
@@ -946,22 +986,8 @@ view model =
             Nothing ->
                 div [] []
         , svg
-            [ Svg.Attributes.style "height:100%; width:100%"
-            , Mouse.onDown MouseDownEvent
-            , Mouse.onMove MouseMoveEvent
-            , Mouse.onUp MouseUpEvent
-            , Mouse.onLeave MouseLeaveEvent
-            ]
-            (case model.viewport of
-                Nothing ->
-                    []
-
-                Just _ ->
-                    (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                        ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                        ++ svgPortal model.portal
-                        ++ svgLine model.line
-            )
+            (Svg.Attributes.style "height:100%; width:100%" :: svgAttributes)
+            svgObjects
         ]
 
 
