@@ -2,8 +2,10 @@ module Main exposing (..)
 
 import Aberth exposing (solve)
 import Browser
+import Browser.Dom as Dom
 import Browser.Events
 import Complex exposing (toCartesian)
+import Debug
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as H
@@ -173,6 +175,7 @@ type alias Model =
     , initBall : ( String, BallPosition )
     , ghosts : List Ball
     , targetDuration : Maybe DurationAnimation
+    , viewport : Maybe Dom.Viewport
     }
 
 
@@ -665,8 +668,12 @@ init _ =
       , portal = portal
       , ghosts = ghosts
       , targetDuration = Nothing
+      , viewport = Nothing
       }
-    , Task.perform Play Time.now
+    , Cmd.batch
+        [ Task.perform Play Time.now
+        , Task.perform CurrentViewport Dom.getViewport
+        ]
     )
 
 
@@ -683,6 +690,7 @@ type Msg
     | MouseLeaveEvent Mouse.Event
     | ChangeLineTime (Maybe Int)
     | SetTargetDuration Int Time.Posix
+    | CurrentViewport Dom.Viewport
 
 
 pe2Vec2 : Mouse.Event -> Vec2
@@ -883,6 +891,9 @@ update msg model =
         SetTargetDuration duration t ->
             ( { model | targetDuration = Just { start = model.duration, end = duration, startTime = t } }, Cmd.none )
 
+        CurrentViewport vp ->
+            ( {model | viewport = Just vp}, Cmd.none )
+
 
 
 -- SUBSCRIPTIONS
@@ -941,10 +952,15 @@ view model =
             , Mouse.onUp MouseUpEvent
             , Mouse.onLeave MouseLeaveEvent
             ]
-            ((model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
-                ++ svgPortal model.portal
-                ++ svgLine model.line
+            (case model.viewport of
+                Nothing ->
+                    []
+
+                Just _ ->
+                    (model.ghosts |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                        ++ (model.balls |> List.concatMap (\ball -> svgBall ball (model.relativeTime |> toFloat)))
+                        ++ svgPortal model.portal
+                        ++ svgLine model.line
             )
         ]
 
