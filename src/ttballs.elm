@@ -1016,11 +1016,11 @@ view model =
     in
     div
         [ H.style "display" "grid"
-        , H.style "grid-template-rows" "max-content 2em 1fr"
+        , H.style "grid-template-rows" "max-content 2em 2em 1fr"
         , H.style "height" "100%"
         , H.style "width" "100%"
         ]
-        [ input
+        ([ input
             [ H.type_ "range"
             , H.min "0"
             , H.max (maxRange |> String.fromInt)
@@ -1028,24 +1028,29 @@ view model =
             , H.readonly True
             ]
             []
-        , case model.line of
-            Just _ ->
-                input
-                    [ H.type_ "range"
-                    , H.min "0"
-                    , H.max "3000"
-                    , H.readonly True
-                    , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
-                    , onInput (String.toInt >> ChangeLineTime)
-                    ]
-                    []
+         ]
+            ++ (case model.line of
+                    Just _ ->
+                        [ div [H.style "color" "white", H.style "line-height" "2em"] [ Html.text "Adjust launch time:" ]
+                        , input
+                            [ H.type_ "range"
+                            , H.min "0"
+                            , H.max "3000"
+                            , H.readonly True
+                            , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
+                            , onInput (String.toInt >> ChangeLineTime)
+                            ]
+                            []
+                        ]
 
-            Nothing ->
-                div [] []
-        , svg
-            (Svg.Attributes.style "height:100%; width:100%" :: svgAttributes)
-            svgObjects
-        ]
+                    Nothing ->
+                        [ div [] [], div [] [] ]
+               )
+            ++ [ svg
+                    (Svg.Attributes.style "height:100%; width:100%" :: svgAttributes)
+                    svgObjects
+               ]
+        )
 
 
 svgLine : DisplayScaling -> Maybe Line -> List (Svg Msg)
