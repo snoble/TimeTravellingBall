@@ -866,7 +866,7 @@ update msg model =
                                     Just { ln | editState = LineStartMoving, s = vecToExitStartingPoint model.portal v }
 
                                 else if endDistance <= minDistance then
-                                    Just { ln | editState = LineEndMoving, e = vecToExitStartingPoint model.portal v }
+                                    Just { ln | editState = LineEndMoving, e = v }
 
                                 else
                                     Just ln
@@ -1033,7 +1033,7 @@ view model =
                 input
                     [ H.type_ "range"
                     , H.min "0"
-                    , H.max (maxRange |> String.fromInt)
+                    , H.max "3000"
                     , H.readonly True
                     , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
                     , onInput (String.toInt >> ChangeLineTime)
