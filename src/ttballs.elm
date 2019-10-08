@@ -93,7 +93,7 @@ posT pos =
 
 type BallType
     = Normal
-    | Ghost
+    | Ghost Float
     | Substance
 
 
@@ -226,7 +226,7 @@ createBalls initialState portals =
                         { initPosition = initialPosition
                         , initTime = t
                         , movements = movements
-                        , ballType = Normal
+                        , ballType = ballType
                         }
                 )
                 movementData
@@ -244,7 +244,7 @@ createBalls initialState portals =
                         { initPosition = initialPosition
                         , initTime = t
                         , movements = movements
-                        , ballType = Ghost
+                        , ballType = Ghost 2
                         }
                     )
     in
@@ -569,7 +569,7 @@ updateBallDict indexedPositions ballDict =
     indexedPositions
         |> List.foldl
             (\{ idx, pos } ->
-                Dict.update idx (Maybe.map (NE.cons pos) >> Maybe.withDefault (NE.fromElement pos) >> Just)
+                Dict.update idx (Maybe.map (NE.cons pos) >> orElse (Just (NE.fromElement pos)))
             )
             ballDict
 
@@ -1114,7 +1114,7 @@ svgPortal ds portal =
     [ Svg.radialGradient
         [ id "portalGradient"
         ]
-        [ Svg.stop [ Svg.Attributes.offset "5%", Svg.Attributes.stopColor "blue" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
+        [ Svg.stop [ Svg.Attributes.offset "35%", Svg.Attributes.stopColor "blue" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
     , Svg.circle
         [ cx (entrance |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (entrance |> Math.Vector2.getY |> round |> String.fromInt)
@@ -1192,29 +1192,57 @@ svgBall ds ball time =
                 [ Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString ] |> List.filterMap identity
 
             radius =
-                vec2 11 0 |> ds.toDisplay |> getX |> String.fromFloat
+                vec2 11 0 |> ds.toDisplay |> getX
         in
         xys
             |> List.concatMap
                 (\( xs, ys ) ->
-                    svgBallType radius xs ys ball.ballType
+                    svgBallType radius xs ys time ball.ballType
                 )
 
 
-svgBallType : String -> String -> String -> BallType -> List (Svg Msg)
-svgBallType radius xString yString ballType =
-    [ Svg.circle
-        [ cx xString
-        , cy yString
-        , r radius
-        , fill "darkred"
-        ]
-        []
-    , Svg.circle
-        [ cx xString
-        , cy yString
-        , r radius
-        , fill "red"
-        ]
-        []
-    ]
+svgBallType : Float -> String -> String -> Float -> BallType -> List (Svg Msg)
+svgBallType radius xString yString time ballType =
+    case ballType of
+        Normal ->
+            [ Svg.circle
+                [ cx xString
+                , cy yString
+                , r (radius |> String.fromFloat)
+                , fill "red"
+                ]
+                []
+            , Svg.circle
+                [ cx xString
+                , cy yString
+                , r (radius * 0.7 |> String.fromFloat)
+                , fill "yellow"
+                ]
+                []
+            ]
+
+        Ghost t ->
+            [ Svg.circle
+                [ cx xString
+                , cy yString
+                , r (radius * 0.7 |> String.fromFloat)
+                , fill "yellow"
+                ]
+                []
+            ]
+
+        Substance ->
+            [ Svg.circle
+                [ cx xString
+                , cy yString
+                , r (radius |> String.fromFloat)
+                , fill "red"
+                ]
+                []            , Svg.circle
+                [ cx xString
+                , cy yString
+                , r (radius * 0.7 |> String.fromFloat)
+                , fill "#36454f"
+                ]
+                []
+            ]
