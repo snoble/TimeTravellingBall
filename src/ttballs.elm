@@ -1195,13 +1195,26 @@ svgBall ds ball time =
                 vec2 11 0 |> ds.toDisplay |> getX |> String.fromFloat
         in
         xys
-            |> List.map
+            |> List.concatMap
                 (\( xs, ys ) ->
-                    Svg.circle
-                        [ cx xs
-                        , cy ys
-                        , r radius
-                        , fill "red"
-                        ]
-                        []
+                    svgBallType radius xs ys ball.ballType
                 )
+
+
+svgBallType : String -> String -> String -> BallType -> List (Svg Msg)
+svgBallType radius xString yString ballType =
+    [ Svg.circle
+        [ cx xString
+        , cy yString
+        , r radius
+        , fill "darkred"
+        ]
+        []
+    , Svg.circle
+        [ cx xString
+        , cy yString
+        , r radius
+        , fill "red"
+        ]
+        []
+    ]
