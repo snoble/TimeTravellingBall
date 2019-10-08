@@ -15,7 +15,7 @@ import List.Nonempty as NE exposing (Nonempty)
 import Math.Matrix4
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
 import Math.Vector3 exposing (vec3)
-import Maybe.Extra exposing (orElse)
+import Maybe.Extra as ME exposing (orElse)
 import Platform.Sub as Sub
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
@@ -93,7 +93,7 @@ posT pos =
 
 type BallType
     = Normal
-    | Ghost Float
+    | Ghost
     | Substance
 
 
@@ -244,7 +244,7 @@ createBalls initialState portals =
                         { initPosition = initialPosition
                         , initTime = t
                         , movements = movements
-                        , ballType = Ghost 2
+                        , ballType = Ghost
                         }
                     )
     in
@@ -967,8 +967,8 @@ view model =
                     ( [], [] )
 
                 Just ds ->
-                    ( (model.ghosts |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
-                        ++ (model.balls |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
+                    ( (model.balls |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
+                        ++ (model.ghosts |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
                         ++ svgPortal ds model.portal
                         ++ svgLine ds model.line
                     , [ Mouse.onDown (MouseDownEvent ds)
@@ -1116,8 +1116,8 @@ svgPortal ds portal =
         ]
         [ Svg.stop [ Svg.Attributes.offset "35%", Svg.Attributes.stopColor "blue" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
     , Svg.circle
-        [ cx (entrance |> Math.Vector2.getX |> round |> String.fromInt)
-        , cy (entrance |> Math.Vector2.getY |> round |> String.fromInt)
+        [ cx (entrance |> Math.Vector2.getX |> String.fromFloat)
+        , cy (entrance |> Math.Vector2.getY |> String.fromFloat)
         , r (outerRadius |> String.fromFloat)
         , fill "url('#portalGradient')"
         ]
@@ -1132,16 +1132,16 @@ svgPortal ds portal =
             ]
             []
         , Svg.circle
-            [ cx (exit |> Math.Vector2.getX |> round |> String.fromInt)
-            , cy (exit |> Math.Vector2.getY |> round |> String.fromInt)
+            [ cx (exit |> Math.Vector2.getX |> String.fromFloat)
+            , cy (exit |> Math.Vector2.getY |> String.fromFloat)
             , r (innerRadius |> String.fromFloat)
             , fill "black"
             ]
             []
         ]
     , Svg.circle
-        [ cx (exit |> Math.Vector2.getX |> round |> String.fromInt)
-        , cy (exit |> Math.Vector2.getY |> round |> String.fromInt)
+        [ cx (exit |> Math.Vector2.getX |> String.fromFloat)
+        , cy (exit |> Math.Vector2.getY |> String.fromFloat)
         , r (outerRadius |> String.fromFloat)
         , fill "url('#portalGradient')"
         , Svg.Attributes.mask "url(#exitMask)"
@@ -1183,13 +1183,13 @@ svgBall ds ball time =
                 Maybe.map2 (\sp -> \vva -> posAtT sp t vva |> ds.toDisplay) startPos va
 
             xString =
-                pos |> Maybe.map (Math.Vector2.getX >> round >> String.fromInt)
+                pos |> Maybe.map (Math.Vector2.getX >> String.fromFloat)
 
             yString =
-                pos |> Maybe.map (Math.Vector2.getY >> round >> String.fromInt)
+                pos |> Maybe.map (Math.Vector2.getY >> String.fromFloat)
 
             xys =
-                [ Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString ] |> List.filterMap identity
+                Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString |> ME.toList
 
             radius =
                 vec2 11 0 |> ds.toDisplay |> getX
@@ -1221,7 +1221,7 @@ svgBallType radius xString yString time ballType =
                 []
             ]
 
-        Ghost t ->
+        Ghost ->
             [ Svg.circle
                 [ cx xString
                 , cy yString
@@ -1238,7 +1238,8 @@ svgBallType radius xString yString time ballType =
                 , r (radius |> String.fromFloat)
                 , fill "red"
                 ]
-                []            , Svg.circle
+                []
+            , Svg.circle
                 [ cx xString
                 , cy yString
                 , r (radius * 0.7 |> String.fromFloat)
