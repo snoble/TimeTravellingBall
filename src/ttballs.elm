@@ -651,20 +651,20 @@ durationFromBalls balls ghosts =
                 |> List.maximum
                 |> Maybe.withDefault 0.0
     in
-    ceiling (maxDuration / 3000.0) * 3000
+    ceiling (maxDuration / 1000.0) * 1000
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
         v1 =
-            vec2 0.18 0.7 |> Math.Vector2.scale 0.65
+            vec2 0.065 0.5 |> Math.Vector2.scale 0.65
 
         initBall =
-            ( Normal, OnBoard { t = 1000.0, x = vec2 300 100, va = avFromV v1 } )
+            ( Normal, OnBoard { t = 1000.0, x = vec2 250 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 500 800) (vec2 100 800) (3 * pi / 2) 2500
+            createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi ) 1500
 
         ( balls, ghosts ) =
             createBalls
@@ -686,8 +686,8 @@ init _ =
       , targetDuration = Nothing
       , viewport = Nothing
       , displayScaling = Nothing
-      , spaceHeight = 900
-      , spaceWidth = 600
+      , spaceHeight = 500
+      , spaceWidth = 500
       }
     , Cmd.batch
         [ Task.perform Play Time.now
