@@ -91,11 +91,17 @@ posT pos =
             t
 
 
+type BallType
+    = Normal
+    | Ghost
+    | Substance
+
+
 type alias Ball =
-    { color : String
-    , initPosition : Maybe Vec2
+    { initPosition : Maybe Vec2
     , initTime : Float
     , movements : List BallMovement
+    , ballType : BallType
     }
 
 
@@ -182,7 +188,7 @@ type alias Model =
     , balls : List Ball
     , duration : Int
     , portal : Portal
-    , initBall : ( String, BallPosition )
+    , initBall : ( BallType, BallPosition )
     , ghosts : List Ball
     , targetDuration : Maybe DurationAnimation
     , viewport : Maybe Dom.Viewport
@@ -197,7 +203,7 @@ zeroTimePosition pos =
     ballPosAtT pos 0.0
 
 
-createBalls : List ( String, BallPosition ) -> List Portal -> ( List Ball, List Ball )
+createBalls : List ( BallType, BallPosition ) -> List Portal -> ( List Ball, List Ball )
 createBalls initialState portals =
     let
         initDict =
@@ -216,11 +222,11 @@ createBalls initialState portals =
         liveBalls =
             List.map2
                 (\( initialPosition, t, movements ) ->
-                    \( color, _ ) ->
-                        { color = color
-                        , initPosition = initialPosition
+                    \( ballType, _ ) ->
+                        { initPosition = initialPosition
                         , initTime = t
                         , movements = movements
+                        , ballType = Normal
                         }
                 )
                 movementData
@@ -234,14 +240,11 @@ createBalls initialState portals =
                         let
                             ( initialPosition, t, movements ) =
                                 movementsFromPositions positions
-
-                            color =
-                                "red"
                         in
-                        { color = color
-                        , initPosition = initialPosition
+                        { initPosition = initialPosition
                         , initTime = t
                         , movements = movements
+                        , ballType = Ghost
                         }
                     )
     in
@@ -658,7 +661,7 @@ init _ =
             vec2 0.18 0.7 |> Math.Vector2.scale 0.65
 
         initBall =
-            ( "red", OnBoard { t = 1000.0, x = vec2 300 100, va = avFromV v1 } )
+            ( Normal, OnBoard { t = 1000.0, x = vec2 300 100, va = avFromV v1 } )
 
         portal =
             createPortal (vec2 500 800) (vec2 100 800) (3 * pi / 2) 2500
@@ -749,7 +752,7 @@ updateWithNewLine model line =
             { t = line.time, x = line.s, va = avFromV initV }
 
         ( balls, ghosts ) =
-            createBalls [ model.initBall, ( "pink", OnBoard pos2 ) ] [ model.portal ]
+            createBalls [ model.initBall, ( Substance, OnBoard pos2 ) ] [ model.portal ]
 
         targetDuration =
             durationFromBalls balls ghosts
@@ -1108,11 +1111,15 @@ svgPortal ds portal =
         exit =
             portal.exit |> ds.toDisplay
     in
-    [ Svg.circle
+    [ Svg.radialGradient
+        [ id "portalGradient"
+        ]
+        [ Svg.stop [ Svg.Attributes.offset "5%", Svg.Attributes.stopColor "blue" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
+    , Svg.circle
         [ cx (entrance |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (entrance |> Math.Vector2.getY |> round |> String.fromInt)
         , r (outerRadius |> String.fromFloat)
-        , fill "yellow"
+        , fill "url('#portalGradient')"
         ]
         []
     , Svg.mask [ id "exitMask" ]
@@ -1136,7 +1143,7 @@ svgPortal ds portal =
         [ cx (exit |> Math.Vector2.getX |> round |> String.fromInt)
         , cy (exit |> Math.Vector2.getY |> round |> String.fromInt)
         , r (outerRadius |> String.fromFloat)
-        , fill "yellow"
+        , fill "url('#portalGradient')"
         , Svg.Attributes.mask "url(#exitMask)"
         ]
         []
@@ -1194,7 +1201,7 @@ svgBall ds ball time =
                         [ cx xs
                         , cy ys
                         , r radius
-                        , fill ball.color
+                        , fill "red"
                         ]
                         []
                 )
