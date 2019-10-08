@@ -160,11 +160,17 @@ createPortal entrance exit angle timeDelta =
     }
 
 
+type LineEditState
+    = LineFixed
+    | LineStartMoving
+    | LineEndMoving
+
+
 type alias Line =
     { s : Vec2
     , e : Vec2
     , time : Float
-    , fixed : Bool
+    , editState : LineEditState
     }
 
 
@@ -664,7 +670,7 @@ init _ =
             ( Normal, OnBoard { t = 1000.0, x = vec2 250 100, va = avFromV v1 } )
 
         portal =
-            createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi ) 1500
+            createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
 
         ( balls, ghosts ) =
             createBalls
@@ -722,21 +728,26 @@ pe2Vec2 ds event =
     vec2 x y |> ds.fromDisplay
 
 
-vecToExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
-vecToExitStartingPoint portal x =
+vecToMaybeExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
+vecToMaybeExitStartingPoint portal x =
     if Math.Vector2.distance x portal.exit > 50.0 then
         Nothing
 
     else
-        let
-            direction =
-                if Math.Vector2.distance x portal.exit == 0.0 then
-                    vec2 1 0
+        Just (vecToExitStartingPoint portal x)
 
-                else
-                    Math.Vector2.direction x portal.exit
-        in
-        Just (Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction))
+
+vecToExitStartingPoint : Portal -> Vec2 -> Vec2
+vecToExitStartingPoint portal x =
+    let
+        direction =
+            if Math.Vector2.distance x portal.exit == 0.0 then
+                vec2 1 0
+
+            else
+                Math.Vector2.direction x portal.exit
+    in
+    Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction)
 
 
 updateWithNewLine : Model -> Line -> ( Model, Cmd Msg )
@@ -827,17 +838,38 @@ update msg model =
                         pe2Vec2 ds event
 
                     line =
-                        v
-                            |> vecToExitStartingPoint model.portal
-                            |> Maybe.map
-                                (\s ->
-                                    { s = s
-                                    , e = v
-                                    , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
-                                    , fixed = False
-                                    }
-                                )
-                            |> orElse model.line
+                        case model.line of
+                            Nothing ->
+                                v
+                                    |> vecToMaybeExitStartingPoint model.portal
+                                    |> Maybe.map
+                                        (\s ->
+                                            { s = s
+                                            , e = v
+                                            , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
+                                            , editState = LineEndMoving
+                                            }
+                                        )
+
+                            Just ln ->
+                                let
+                                    startDistance =
+                                        Math.Vector2.distance v ln.s
+
+                                    endDistance =
+                                        Math.Vector2.distance v ln.e
+
+                                    minDistance =
+                                        [ 20.0, startDistance, endDistance ] |> List.minimum |> Maybe.withDefault 20.0
+                                in
+                                if startDistance <= minDistance then
+                                    Just { ln | editState = LineStartMoving, s = vecToExitStartingPoint model.portal v }
+
+                                else if endDistance <= minDistance then
+                                    Just { ln | editState = LineEndMoving, e = vecToExitStartingPoint model.portal v }
+
+                                else
+                                    Just ln
                 in
                 { model | line = line }
 
@@ -853,11 +885,15 @@ update msg model =
                         model.line
                             |> Maybe.map
                                 (\line ->
-                                    if line.fixed then
-                                        line
+                                    case line.editState of
+                                        LineFixed ->
+                                            line
 
-                                    else
-                                        { line | e = pe2Vec2 ds event }
+                                        LineEndMoving ->
+                                            { line | e = pe2Vec2 ds event }
+
+                                        LineStartMoving ->
+                                            { line | s = pe2Vec2 ds event |> vecToExitStartingPoint model.portal }
                                 )
                 in
                 case newLine of
@@ -874,7 +910,7 @@ update msg model =
             if event.isPrimary then
                 case model.line of
                     Just line ->
-                        updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
+                        updateWithNewLine model { line | editState = LineFixed }
 
                     Nothing ->
                         ( model, Cmd.none )
@@ -886,7 +922,7 @@ update msg model =
             if event.isPrimary then
                 case model.line of
                     Just line ->
-                        updateWithNewLine model { line | fixed = True, time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault line.time }
+                        updateWithNewLine model { line | editState = LineFixed }
 
                     Nothing ->
                         ( model, Cmd.none )
@@ -1016,7 +1052,7 @@ svgLine : DisplayScaling -> Maybe Line -> List (Svg Msg)
 svgLine ds maybeLine =
     maybeLine
         |> Maybe.map
-            (\{ s, e, time, fixed } ->
+            (\{ s, e, time, editState } ->
                 let
                     scaledS =
                         ds.toDisplay s
