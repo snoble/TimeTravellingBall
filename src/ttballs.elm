@@ -692,7 +692,7 @@ init _ =
       , targetDuration = Nothing
       , viewport = Nothing
       , displayScaling = Nothing
-      , spaceHeight = 500
+      , spaceHeight = 600
       , spaceWidth = 500
       }
     , Cmd.batch
