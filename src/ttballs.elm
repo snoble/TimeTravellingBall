@@ -667,7 +667,7 @@ init _ =
             vec2 0.065 0.5 |> Math.Vector2.scale 0.65
 
         initBall =
-            ( Normal, OnBoard { t = 1000.0, x = vec2 250 100, va = avFromV v1 } )
+            ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1 } )
 
         portal =
             createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
