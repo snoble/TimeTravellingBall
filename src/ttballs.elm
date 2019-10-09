@@ -1155,7 +1155,7 @@ svgPortal ds portal =
     [ Svg.radialGradient
         [ id "portalGradient"
         ]
-        [ Svg.stop [ Svg.Attributes.offset "35%", Svg.Attributes.stopColor "blue" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
+        [ Svg.stop [ Svg.Attributes.offset "35%", Svg.Attributes.stopColor "orange" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
     , Svg.circle
         [ cx (entrance |> Math.Vector2.getX |> String.fromFloat)
         , cy (entrance |> Math.Vector2.getY |> String.fromFloat)
