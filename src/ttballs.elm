@@ -916,11 +916,27 @@ update msg model =
                                             let
                                                 delta =
                                                     Math.Vector2.sub (pe2Vec2 ds event) anchor
+
+                                                multiplier =
+                                                    Basics.min ((Math.Vector2.length delta / 200) ^ 1.2) 1
+
+                                                modifiedPoint =
+                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
                                             in
-                                            { line | e = anchor |> Math.Vector2.add (delta |> Math.Vector2.scale 0.05) }
+                                            { line | e = modifiedPoint }
 
                                         LineStartMoving anchor ->
-                                            { line | s = pe2Vec2 ds event |> vecToExitStartingPoint model.portal }
+                                            let
+                                                delta =
+                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
+
+                                                multiplier =
+                                                    Basics.min ((Math.Vector2.length delta / 200) ^ 1.2) 1
+
+                                                modifiedPoint =
+                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
+                                            in
+                                            { line | s = modifiedPoint |> vecToExitStartingPoint model.portal }
                                 )
                 in
                 case newLine of
