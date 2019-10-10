@@ -56,6 +56,8 @@ type alias BallMovement =
     { endPos : Maybe Vec2
     , startVelocity : Maybe VelAcc
     , duration : Float
+    , angle : Vec2
+    , timeOffset : Float
     }
 
 
@@ -68,17 +70,34 @@ type alias BallOnBoard =
     { t : Float
     , x : Vec2
     , va : VelAcc
+    , timeOffset : Float
+    , angle : Vec2
     }
 
 
-posXVA : BallPosition -> Maybe ( Vec2, VelAcc )
-posXVA pos =
+posToBallOnBoard : BallPosition -> Maybe BallOnBoard
+posToBallOnBoard pos =
     case pos of
         Vanished _ ->
             Nothing
 
-        OnBoard { t, x, va } ->
-            Just ( x, va )
+        OnBoard bob ->
+            Just bob
+
+
+posXVA : BallPosition -> Maybe ( Vec2, VelAcc )
+posXVA =
+    posToBallOnBoard >> Maybe.map (\{ x, va } -> ( x, va ))
+
+
+posAngle : BallPosition -> Maybe Vec2
+posAngle =
+    posToBallOnBoard >> Maybe.map (\{ angle } -> angle)
+
+
+posTimeOffset : BallPosition -> Maybe Float
+posTimeOffset =
+    posToBallOnBoard >> Maybe.map (\{ timeOffset } -> timeOffset)
 
 
 posT : BallPosition -> Float
@@ -285,6 +304,8 @@ movementsFromPositions positions =
                             , { endPos = thisP |> posXVA |> Maybe.map Tuple.first
                               , startVelocity = previousP |> posXVA |> Maybe.map Tuple.second
                               , duration = (thisP |> posT) - (previousP |> posT)
+                              , angle = previousP |> posAngle |> Maybe.withDefault (vec2 0 1)
+                              , timeOffset = previousP |> posTimeOffset |> Maybe.withDefault 0
                               }
                                 :: movementsSoFar
                             )
@@ -454,7 +475,7 @@ possiblePortalJumps portals balls =
                                 OnBoard pos ->
                                     let
                                         times =
-                                            interceptTime { t = 0, x = portal.entrance, va = vaZero } pos
+                                            interceptTime { t = 0, x = portal.entrance, va = vaZero, angle = vec2 1 0, timeOffset = 0 } pos
                                     in
                                     times
                                         |> List.map
@@ -468,6 +489,8 @@ possiblePortalJumps portals balls =
                                                             | x = Math.Vector2.add portal.exit (Math.Vector2.sub enteringPos.x portal.entrance |> portal.rotation)
                                                             , va = rotateVelAcc portal.rotation enteringPos.va
                                                             , t = enteringPos.t - portal.timeDelta
+                                                            , timeOffset = enteringPos.timeOffset - portal.timeDelta
+                                                            , angle = portal.rotation enteringPos.angle
                                                         }
                                                 in
                                                 { idx = ball.idx, t = t, pos = exitingPos }
@@ -513,9 +536,10 @@ nextChanges positions portals =
                         { iPos
                             | pos =
                                 OnBoard
-                                    { x = posAtT pos.x pos.va.stopTime pos.va
-                                    , va = vaZero
-                                    , t = pos.t + pos.va.stopTime
+                                    { pos
+                                        | x = posAtT pos.x pos.va.stopTime pos.va
+                                        , va = vaZero
+                                        , t = pos.t + pos.va.stopTime
                                     }
                         }
                     )
@@ -552,7 +576,7 @@ nextChanges positions portals =
                     { idx = idx, pos = OnBoard pos }
 
                 ghostStop =
-                    { idx = idx, pos = OnBoard { x = posAtT pos.x pos.va.stopTime pos.va, va = vaZero, t = pos.t + pos.va.stopTime } }
+                    { idx = idx, pos = OnBoard { pos | x = posAtT pos.x pos.va.stopTime pos.va, va = vaZero, t = pos.t + pos.va.stopTime } }
             in
             ( [ { idx = idx, pos = Vanished t } ], [ ghostAppear, ghostStop ] )
 
@@ -628,22 +652,6 @@ accFromV =
     normalize >> Math.Vector2.scale -accIntensity
 
 
-indexedPositionFrom : Vec2 -> Vec2 -> Float -> Int -> IndexedBallPosition
-indexedPositionFrom x v t idx =
-    let
-        va =
-            avFromV v
-    in
-    { idx = idx
-    , pos =
-        OnBoard
-            { t = t
-            , x = x
-            , va = va
-            }
-    }
-
-
 durationFromBalls : List Ball -> List Ball -> Int
 durationFromBalls balls ghosts =
     let
@@ -667,7 +675,7 @@ init _ =
             vec2 0.065 0.5 |> Math.Vector2.scale 0.65
 
         initBall =
-            ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1 } )
+            ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1, angle = vec2 0 1, timeOffset = 0 } )
 
         portal =
             createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
@@ -760,7 +768,7 @@ updateWithNewLine model line =
             Math.Vector2.direction line.e line.s |> Math.Vector2.scale (sqrt (distance * accIntensity * 2.0))
 
         pos2 =
-            { t = line.time, x = line.s, va = avFromV initV }
+            { t = line.time, x = line.s, va = avFromV initV, timeOffset = 0, angle = vec2 0 1 }
 
         ( balls, ghosts ) =
             createBalls [ model.initBall, ( Substance, OnBoard pos2 ) ] [ model.portal ]
@@ -1031,7 +1039,7 @@ view model =
          ]
             ++ (case model.line of
                     Just _ ->
-                        [ div [H.style "color" "white", H.style "line-height" "2em"] [ Html.text "Adjust launch time:" ]
+                        [ div [ H.style "color" "white", H.style "line-height" "2em" ] [ Html.text "Adjust launch time:" ]
                         , input
                             [ H.type_ "range"
                             , H.min "0"
@@ -1131,9 +1139,10 @@ vaAtT va t =
 
 ballPosAtT : BallOnBoard -> Float -> BallOnBoard
 ballPosAtT ball t =
-    { t = t
-    , x = posAtT ball.x (t - ball.t) ball.va
-    , va = vaAtT ball.va (t - ball.t)
+    { ball
+        | t = t
+        , x = posAtT ball.x (t - ball.t) ball.va
+        , va = vaAtT ball.va (t - ball.t)
     }
 
 
