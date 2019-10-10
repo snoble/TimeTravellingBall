@@ -183,8 +183,8 @@ createPortal entrance exit angle timeDelta =
 
 type LineEditState
     = LineFixed
-    | LineStartMoving
-    | LineEndMoving
+    | LineStartMoving Vec2
+    | LineEndMoving Vec2
 
 
 type alias Line =
@@ -870,7 +870,7 @@ update msg model =
                                             { s = s
                                             , e = v
                                             , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
-                                            , editState = LineEndMoving
+                                            , editState = LineEndMoving v
                                             }
                                         )
 
@@ -886,10 +886,10 @@ update msg model =
                                         [ 20.0, startDistance, endDistance ] |> List.minimum |> Maybe.withDefault 20.0
                                 in
                                 if startDistance <= minDistance then
-                                    Just { ln | editState = LineStartMoving, s = vecToExitStartingPoint model.portal v }
+                                    Just { ln | editState = LineStartMoving ln.s, s = vecToExitStartingPoint model.portal v }
 
                                 else if endDistance <= minDistance then
-                                    Just { ln | editState = LineEndMoving, e = v }
+                                    Just { ln | editState = LineEndMoving ln.e, e = v }
 
                                 else
                                     Just ln
@@ -912,10 +912,14 @@ update msg model =
                                         LineFixed ->
                                             line
 
-                                        LineEndMoving ->
-                                            { line | e = pe2Vec2 ds event }
+                                        LineEndMoving anchor ->
+                                            let
+                                                delta =
+                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
+                                            in
+                                            { line | e = anchor |> Math.Vector2.add (delta |> Math.Vector2.scale 0.05) }
 
-                                        LineStartMoving ->
+                                        LineStartMoving anchor ->
                                             { line | s = pe2Vec2 ds event |> vecToExitStartingPoint model.portal }
                                 )
                 in
