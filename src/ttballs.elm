@@ -216,7 +216,7 @@ type alias Model =
     , initBall : ( BallType, BallPosition )
     , ghosts : List Ball
     , targetDuration : Maybe DurationAnimation
-    , viewport : Maybe Dom.Viewport
+    , viewport : Maybe Dom.Element
     , displayScaling : Maybe DisplayScaling
     , spaceHeight : Float
     , spaceWidth : Float
@@ -705,7 +705,7 @@ init _ =
       }
     , Cmd.batch
         [ Task.perform Play Time.now
-        , Task.perform CurrentViewport Dom.getViewport
+        , Task.attempt CurrentViewport (Dom.getElement "svg-board")
         ]
     )
 
@@ -723,7 +723,7 @@ type Msg
     | MouseLeaveEvent Mouse.Event
     | ChangeLineTime (Maybe Int)
     | SetTargetDuration Int Time.Posix
-    | CurrentViewport Dom.Viewport
+    | CurrentViewport (Result.Result Dom.Error Dom.Element)
     | Resize
 
 
@@ -955,29 +955,34 @@ update msg model =
         SetTargetDuration duration t ->
             ( { model | targetDuration = Just { start = model.duration, end = duration, startTime = t } }, Cmd.none )
 
-        CurrentViewport vp ->
-            let
-                scaler =
-                    Basics.min
-                        (vp.viewport.height / model.spaceHeight)
-                        (vp.viewport.width / model.spaceWidth)
+        CurrentViewport result ->
+            case result of
+                Result.Err _ ->
+                    ( model, Cmd.none )
 
-                invScaler =
-                    1 / scaler
+                Result.Ok vp ->
+                    let
+                        scaler =
+                            Basics.min
+                                (vp.element.height / model.spaceHeight)
+                                (vp.element.width / model.spaceWidth)
 
-                fromDisplay =
-                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 invScaler invScaler 1))
+                        invScaler =
+                            1 / scaler
 
-                toDisplay =
-                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 scaler scaler 1))
+                        fromDisplay =
+                            matrix4Tofn2 (Math.Matrix4.makeScale (vec3 invScaler invScaler 1))
 
-                displayScaling =
-                    { fromDisplay = fromDisplay, toDisplay = toDisplay }
-            in
-            ( { model | viewport = Just vp, displayScaling = Just displayScaling }, Cmd.none )
+                        toDisplay =
+                            matrix4Tofn2 (Math.Matrix4.makeScale (vec3 scaler scaler 1))
+
+                        displayScaling =
+                            { fromDisplay = fromDisplay, toDisplay = toDisplay }
+                    in
+                    ( { model | viewport = Just vp, displayScaling = Just displayScaling }, Cmd.none )
 
         Resize ->
-            ( model, Task.perform CurrentViewport Dom.getViewport )
+            ( model, Task.attempt CurrentViewport (Dom.getElement "svg-board") )
 
 
 
@@ -1055,7 +1060,7 @@ view model =
                         [ div [] [], div [] [] ]
                )
             ++ [ svg
-                    (Svg.Attributes.style "height:100%; width:100%" :: svgAttributes)
+                    (Svg.Attributes.style "height:100%; width:100%" :: Svg.Attributes.id "svg-board" :: svgAttributes)
                     svgObjects
                ]
         )
