@@ -119,8 +119,10 @@ type BallType
 type alias Ball =
     { initPosition : Maybe Vec2
     , initTime : Float
+    , initAngle : Maybe Vec2
     , movements : List BallMovement
     , ballType : BallType
+    , id : String
     }
 
 
@@ -233,45 +235,55 @@ createBalls initialState portals =
     let
         initDict =
             initialState
-                |> List.indexedMap (\i -> \( _, pos ) -> ( i, NE.fromElement pos ))
+                |> List.indexedMap (\i -> \( ballType, pos ) -> ( i, ( ballType, NE.fromElement pos ) ))
                 |> Dict.fromList
 
-        ( movementDict, ghostDict ) =
-            ( initDict, Dict.empty ) |> generatePositions portals
+        ( positionsDict, ghostDict ) =
+            ( initDict |> Dict.map (\_ -> Tuple.second), Dict.empty ) |> generatePositions portals
 
-        movementData =
-            movementDict
-                |> Dict.values
-                |> List.map movementsFromPositions
+        movementDict =
+            positionsDict
+                |> Dict.map (\_ -> movementsFromPositions)
 
         liveBalls =
-            List.map2
-                (\( initialPosition, t, movements ) ->
-                    \( ballType, _ ) ->
-                        { initPosition = initialPosition
-                        , initTime = t
-                        , movements = movements
-                        , ballType = ballType
-                        }
-                )
-                movementData
-                initialState
+            initDict
+                |> Dict.map
+                    (\idx ->
+                        \( ballType, _ ) ->
+                            movementDict
+                                |> Dict.get idx
+                                |> Maybe.map
+                                    (\{ initialPosition, t, movements, initAngle } ->
+                                        { initPosition = initialPosition
+                                        , initTime = t
+                                        , movements = movements
+                                        , ballType = ballType
+                                        , id = "ball-" ++ (idx |> String.fromInt)
+                                        , initAngle = initAngle
+                                        }
+                                    )
+                    )
+                |> Dict.values
+                |> List.filterMap identity
 
         ghosts =
             ghostDict
-                |> Dict.values
-                |> List.map
-                    (\positions ->
-                        let
-                            ( initialPosition, t, movements ) =
-                                movementsFromPositions positions
-                        in
-                        { initPosition = initialPosition
-                        , initTime = t
-                        , movements = movements
-                        , ballType = Ghost
-                        }
+                |> Dict.map
+                    (\idx ->
+                        \positions ->
+                            let
+                                { initialPosition, t, movements, initAngle } =
+                                    movementsFromPositions positions
+                            in
+                            { initPosition = initialPosition
+                            , initTime = t
+                            , movements = movements
+                            , ballType = Ghost
+                            , id = "ghost-" ++ (idx |> String.fromInt)
+                            , initAngle = initAngle
+                            }
                     )
+                |> Dict.values
     in
     ( liveBalls, ghosts )
 
@@ -280,7 +292,7 @@ createBalls initialState portals =
 -- assumes the last postion is the stopped ball
 
 
-movementsFromPositions : Nonempty BallPosition -> ( Maybe Vec2, Float, List BallMovement )
+movementsFromPositions : Nonempty BallPosition -> { initialPosition : Maybe Vec2, t : Float, movements : List BallMovement, initAngle : Maybe Vec2 }
 movementsFromPositions positions =
     let
         firstP =
@@ -289,10 +301,13 @@ movementsFromPositions positions =
         tail =
             positions |> NE.tail
 
-        initPosition =
+        initialPosition =
             firstP |> posXVA |> Maybe.map Tuple.first
 
-        initTime =
+        initAngle =
+            firstP |> posAngle
+
+        t =
             firstP |> posT
 
         movements =
@@ -314,7 +329,7 @@ movementsFromPositions positions =
                 |> Tuple.second
                 |> List.reverse
     in
-    ( initPosition, initTime, movements )
+    { initialPosition = initialPosition, t = t, movements = movements, initAngle = initAngle }
 
 
 interceptTime : BallOnBoard -> BallOnBoard -> List Float
@@ -1237,68 +1252,87 @@ svgBall ds ball time =
             pos =
                 Maybe.map2 (\sp -> \vva -> posAtT sp t vva |> ds.toDisplay) startPos va
 
-            xString =
-                pos |> Maybe.map (Math.Vector2.getX >> String.fromFloat)
+            x =
+                pos |> Maybe.map Math.Vector2.getX
 
-            yString =
-                pos |> Maybe.map (Math.Vector2.getY >> String.fromFloat)
+            y =
+                pos |> Maybe.map Math.Vector2.getY
 
-            xys =
-                Maybe.map2 (\xs -> \ys -> ( xs, ys )) xString yString |> ME.toList
+            xyAngle =
+                Maybe.map3 (\xs -> \ys -> \angle -> ( xs, ys, angle )) x y ball.initAngle |> ME.toList
 
             radius =
                 vec2 11 0 |> ds.toDisplay |> getX
         in
-        xys
+        xyAngle
             |> List.concatMap
-                (\( xs, ys ) ->
-                    svgBallType radius xs ys time ball.ballType
+                (\( xs, ys, angle ) ->
+                    svgBallType radius xs ys time ball.ballType angle ball.id
                 )
 
 
-svgBallType : Float -> String -> String -> Float -> BallType -> List (Svg Msg)
-svgBallType radius xString yString time ballType =
+svgBallType : Float -> Float -> Float -> Float -> BallType -> Vec2 -> String -> List (Svg Msg)
+svgBallType radius x y time ballType angle ballId =
     case ballType of
         Normal ->
-            [ Svg.circle
-                [ cx xString
-                , cy yString
+            Svg.circle
+                [ cx (x |> String.fromFloat)
+                , cy (y |> String.fromFloat)
                 , r (radius |> String.fromFloat)
                 , fill "red"
                 ]
                 []
-            , Svg.circle
-                [ cx xString
-                , cy yString
-                , r (radius * 0.7 |> String.fromFloat)
-                , fill "yellow"
-                ]
-                []
-            ]
+                :: svgGhost radius x y time angle ballId
 
         Ghost ->
-            [ Svg.circle
-                [ cx xString
-                , cy yString
-                , r (radius * 0.7 |> String.fromFloat)
-                , fill "yellow"
-                ]
-                []
-            ]
+            svgGhost radius x y time angle ballId
 
         Substance ->
             [ Svg.circle
-                [ cx xString
-                , cy yString
+                [ cx (x |> String.fromFloat)
+                , cy (y |> String.fromFloat)
                 , r (radius |> String.fromFloat)
                 , fill "red"
                 ]
                 []
             , Svg.circle
-                [ cx xString
-                , cy yString
+                [ cx (x |> String.fromFloat)
+                , cy (y |> String.fromFloat)
                 , r (radius * 0.7 |> String.fromFloat)
                 , fill "#36454f"
                 ]
                 []
             ]
+
+
+svgGhost : Float -> Float -> Float -> Float -> Vec2 -> String -> List (Svg Msg)
+svgGhost radius x y time angle ballId =
+    let
+        ghostRadius =
+            radius * 0.7
+
+        orbCenter =
+            vec2 x y |> Math.Vector2.add (angle |> Math.Vector2.scale (ghostRadius * 0.5))
+
+        gradientId =
+            "gradient-" ++ ballId
+    in
+    [ Svg.radialGradient
+        [ id gradientId
+        ]
+        [ Svg.stop [ Svg.Attributes.offset "0%", Svg.Attributes.stopColor "red" ] [], Svg.stop [ Svg.Attributes.offset "95%", Svg.Attributes.stopColor "yellow" ] [] ]
+    , Svg.circle
+        [ cx (x |> String.fromFloat)
+        , cy (y |> String.fromFloat)
+        , r (ghostRadius |> String.fromFloat)
+        , fill "yellow"
+        ]
+        []
+    , Svg.circle
+        [ cx (orbCenter |> getX |> String.fromFloat)
+        , cy (orbCenter |> getY |> String.fromFloat)
+        , r (ghostRadius * 0.5 |> String.fromFloat)
+        , fill ("url('#" ++ gradientId ++ "')")
+        ]
+        []
+    ]
