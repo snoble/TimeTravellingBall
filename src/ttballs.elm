@@ -4,6 +4,7 @@ import Aberth exposing (solve)
 import Browser
 import Browser.Dom as Dom
 import Browser.Events
+import Browser.Navigation as Nav exposing (Key)
 import Complex exposing (toCartesian)
 import Dict exposing (Dict)
 import Html exposing (..)
@@ -21,6 +22,7 @@ import Svg exposing (..)
 import Svg.Attributes exposing (..)
 import Task
 import Time
+import Url
 
 
 
@@ -28,11 +30,13 @@ import Time
 
 
 main =
-    Browser.document
+    Browser.application
         { init = init
         , view = view >> (\h -> { title = "Time Travelling Ball", body = [ h ] })
         , update = update
         , subscriptions = subscriptions
+        , onUrlChange = \_ -> DoNothing
+        , onUrlRequest = \_ -> DoNothing
         }
 
 
@@ -683,8 +687,8 @@ durationFromBalls balls ghosts =
     ceiling (maxDuration / 1000.0) * 1000
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
+init _ _ _ =
     let
         v1 =
             vec2 0.065 0.5 |> Math.Vector2.scale 0.65
@@ -742,6 +746,7 @@ type Msg
     | Resize
     | MatchLineToGhost
     | ConvergeLineToGhost
+    | DoNothing
 
 
 pe2Vec2 : DisplayScaling -> Mouse.Event -> Vec2
@@ -1086,6 +1091,9 @@ update msg model =
 
                 Just line ->
                     updateWithNewLine model line
+
+        DoNothing ->
+            ( model, Cmd.none )
 
 
 avgVectors : Vec2 -> Vec2 -> Vec2
