@@ -1072,7 +1072,7 @@ update msg model =
                         |> Maybe.map2
                             (\line ->
                                 \( position, velocity, t ) ->
-                                    { s = position |> avgVectors line.s
+                                    { s = position |> avgVectors line.s |> vecToExitStartingPoint model.portal
                                     , e = posAtT position velocity.stopTime velocity |> avgVectors line.e
                                     , time = (t + line.time) / 2
                                     , editState = LineFixed
