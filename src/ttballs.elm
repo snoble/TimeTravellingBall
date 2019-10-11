@@ -741,6 +741,7 @@ type Msg
     | CurrentViewport (Result.Result Dom.Error Dom.Element)
     | Resize
     | MatchLineToGhost
+    | ConvergeLineToGhost
 
 
 pe2Vec2 : DisplayScaling -> Mouse.Event -> Vec2
@@ -887,10 +888,10 @@ update msg model =
                                         [ 20.0, startDistance, endDistance ] |> List.minimum |> Maybe.withDefault 20.0
                                 in
                                 if startDistance <= minDistance then
-                                    Just { ln | editState = LineStartMoving ln.s, s = vecToExitStartingPoint model.portal v }
+                                    Just { ln | editState = LineStartMoving ln.s }
 
                                 else if endDistance <= minDistance then
-                                    Just { ln | editState = LineEndMoving ln.e, e = v }
+                                    Just { ln | editState = LineEndMoving ln.e }
 
                                 else
                                     Just ln
@@ -899,7 +900,7 @@ update msg model =
 
               else
                 model
-            , Cmd.none
+            , Task.perform (MouseMoveEvent ds) (Task.succeed event)
             )
 
         MouseMoveEvent ds event ->
@@ -1052,6 +1053,45 @@ update msg model =
                 Just line ->
                     updateWithNewLine model line
 
+        ConvergeLineToGhost ->
+            let
+                lineCandidate =
+                    model.ghosts
+                        |> List.map
+                            (\ghost ->
+                                Maybe.map2
+                                    (\position ->
+                                        \velocity ->
+                                            ( position, velocity, ghost.initTime )
+                                    )
+                                    ghost.initPosition
+                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
+                            )
+                        |> List.filterMap identity
+                        |> List.head
+                        |> Maybe.map2
+                            (\line ->
+                                \( position, velocity, t ) ->
+                                    { s = position |> avgVectors line.s
+                                    , e = posAtT position velocity.stopTime velocity |> avgVectors line.e
+                                    , time = (t + line.time) / 2
+                                    , editState = LineFixed
+                                    }
+                            )
+                            model.line
+            in
+            case lineCandidate of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just line ->
+                    updateWithNewLine model line
+
+
+avgVectors : Vec2 -> Vec2 -> Vec2
+avgVectors v1 v2 =
+    Math.Vector2.add v1 v2 |> Math.Vector2.scale 0.5
+
 
 
 -- SUBSCRIPTIONS
@@ -1096,43 +1136,58 @@ view model =
                     )
     in
     div
-        [ H.style "display" "grid"
-        , H.style "grid-template-rows" "max-content max-content 2em 2em 1fr"
-        , H.style "height" "100%"
+        [ H.style "height" "100%"
         , H.style "width" "100%"
         ]
-        ([ div [] [ input [ H.type_ "button", onClick MatchLineToGhost, H.value "Match Line To Ghost" ] [] ]
-         , input
-            [ H.type_ "range"
-            , H.min "0"
-            , H.max (maxRange |> String.fromInt)
-            , H.value relTimeString
-            , H.readonly True
+        [ div
+            [ H.style "position" "fixed"
+            , H.style "bottom" "0px"
+            , H.style "right" "0px"
+            , H.style "display" "grid"
+            , H.style "grid-template-rows" "50% 50%"
+            , H.style "height" "30%"
             ]
-            []
-         ]
-            ++ (case model.line of
-                    Just _ ->
-                        [ div [ H.style "color" "white", H.style "line-height" "2em" ] [ Html.text "Adjust launch time:" ]
-                        , input
-                            [ H.type_ "range"
-                            , H.min "0"
-                            , H.max "3000"
-                            , H.readonly True
-                            , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
-                            , onInput (String.toInt >> ChangeLineTime)
+            [ input [ H.type_ "button", onClick MatchLineToGhost, H.value "Match Line To Ghost" ] []
+            , input [ H.type_ "button", onClick ConvergeLineToGhost, H.value "Converge Line To Ghost" ] []
+            ]
+        , div
+            [ H.style "display" "grid"
+            , H.style "grid-template-rows" "max-content 2em 2em 1fr"
+            , H.style "height" "100%"
+            , H.style "width" "100%"
+            ]
+            (input
+                [ H.type_ "range"
+                , H.min "0"
+                , H.max (maxRange |> String.fromInt)
+                , H.value relTimeString
+                , H.readonly True
+                ]
+                []
+                :: ((case model.line of
+                        Just _ ->
+                            [ div [ H.style "color" "white", H.style "line-height" "2em" ] [ Html.text "Adjust launch time:" ]
+                            , input
+                                [ H.type_ "range"
+                                , H.min "0"
+                                , H.max "3000"
+                                , H.readonly True
+                                , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
+                                , onInput (String.toInt >> ChangeLineTime)
+                                ]
+                                []
                             ]
-                            []
-                        ]
 
-                    Nothing ->
-                        [ div [] [], div [] [] ]
-               )
-            ++ [ svg
-                    (Svg.Attributes.style "height:100%; width:100%" :: Svg.Attributes.id "svg-board" :: svgAttributes)
-                    svgObjects
-               ]
-        )
+                        Nothing ->
+                            [ div [] [], div [] [] ]
+                    )
+                        ++ [ svg
+                                (Svg.Attributes.style "height:100%; width:100%" :: Svg.Attributes.id "svg-board" :: svgAttributes)
+                                svgObjects
+                           ]
+                   )
+            )
+        ]
 
 
 svgLine : DisplayScaling -> Maybe Line -> List (Svg Msg)
