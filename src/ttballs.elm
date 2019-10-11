@@ -740,6 +740,7 @@ type Msg
     | SetTargetDuration Int Time.Posix
     | CurrentViewport (Result.Result Dom.Error Dom.Element)
     | Resize
+    | MatchLineToGhost
 
 
 pe2Vec2 : DisplayScaling -> Mouse.Event -> Vec2
@@ -918,7 +919,7 @@ update msg model =
                                                     Math.Vector2.sub (pe2Vec2 ds event) anchor
 
                                                 multiplier =
-                                                    Basics.min ((Math.Vector2.length delta / 200) ^ 1.2) 1
+                                                    Basics.min (0.02 + ((Math.Vector2.length delta / 200) ^ 1.2)) 1
 
                                                 modifiedPoint =
                                                     Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
@@ -1019,6 +1020,38 @@ update msg model =
         Resize ->
             ( model, Task.attempt CurrentViewport (Dom.getElement "svg-board") )
 
+        MatchLineToGhost ->
+            let
+                lineCandidate =
+                    model.ghosts
+                        |> List.map
+                            (\ghost ->
+                                Maybe.map2
+                                    (\position ->
+                                        \velocity ->
+                                            ( position, velocity, ghost.initTime )
+                                    )
+                                    ghost.initPosition
+                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
+                            )
+                        |> List.filterMap identity
+                        |> List.head
+                        |> Maybe.map
+                            (\( position, velocity, t ) ->
+                                { s = position
+                                , e = posAtT position velocity.stopTime velocity
+                                , time = t
+                                , editState = LineFixed
+                                }
+                            )
+            in
+            case lineCandidate of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just line ->
+                    updateWithNewLine model line
+
 
 
 -- SUBSCRIPTIONS
@@ -1064,11 +1097,12 @@ view model =
     in
     div
         [ H.style "display" "grid"
-        , H.style "grid-template-rows" "max-content 2em 2em 1fr"
+        , H.style "grid-template-rows" "max-content max-content 2em 2em 1fr"
         , H.style "height" "100%"
         , H.style "width" "100%"
         ]
-        ([ input
+        ([ div [] [ input [ H.type_ "button", onClick MatchLineToGhost, H.value "Match Line To Ghost" ] [] ]
+         , input
             [ H.type_ "range"
             , H.min "0"
             , H.max (maxRange |> String.fromInt)
