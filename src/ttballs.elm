@@ -28,9 +28,9 @@ import Time
 
 
 main =
-    Browser.element
+    Browser.document
         { init = init
-        , view = view
+        , view = view >> (\h -> { title = "Time Travelling Ball", body = [ h ] })
         , update = update
         , subscriptions = subscriptions
         }
@@ -1138,6 +1138,7 @@ view model =
     div
         [ H.style "height" "100%"
         , H.style "width" "100%"
+        , H.style "background-color" "#36454f"
         ]
         [ div
             [ H.style "position" "fixed"
