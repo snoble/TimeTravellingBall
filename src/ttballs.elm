@@ -919,7 +919,7 @@ update msg model =
                                                     Math.Vector2.sub (pe2Vec2 ds event) anchor
 
                                                 multiplier =
-                                                    Basics.min (0.02 + ((Math.Vector2.length delta / 200) ^ 1.2)) 1
+                                                    Basics.min (0.005 + ((Math.Vector2.length delta / 200) ^ 1.5)) 1
 
                                                 modifiedPoint =
                                                     Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
