@@ -814,21 +814,6 @@ gameDecoder =
 init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
 init _ _ _ =
     let
-        {- v1 =
-               vec2 0.065 0.5 |> Math.Vector2.scale 0.65
-
-           initBall =
-               ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1, angle = vec2 0 1, timeOffset = 0 } )
-
-           portal =
-               createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
-
-           ( balls, ghosts ) =
-               createBalls
-                   [ initBall
-                   ]
-                   [ portal ]
-        -}
         balls =
             []
 
