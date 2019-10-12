@@ -11,6 +11,8 @@ import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
+import Http
+import Json.Decode as JD exposing (Decoder)
 import List.Extra exposing (minimumBy)
 import List.Nonempty as NE exposing (Nonempty)
 import Math.Matrix4
@@ -218,14 +220,11 @@ type alias Model =
     , line : Maybe Line
     , balls : List Ball
     , duration : Int
-    , portal : Portal
-    , initBall : ( BallType, BallPosition )
     , ghosts : List Ball
     , targetDuration : Maybe DurationAnimation
     , viewport : Maybe Dom.Element
     , displayScaling : Maybe DisplayScaling
-    , spaceHeight : Float
-    , spaceWidth : Float
+    , game : Maybe GameDefinition
     }
 
 
@@ -687,44 +686,176 @@ durationFromBalls balls ghosts =
     ceiling (maxDuration / 1000.0) * 1000
 
 
-init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
-init _ _ _ =
+type alias GameDefinition =
+    { initBall : ( BallType, BallPosition )
+    , portal : Portal
+    , spaceHeight : Float
+    , spaceWidth : Float
+    }
+
+
+initializeGame : GameDefinition -> Model -> ( Model, Cmd Msg )
+initializeGame game model =
     let
-        v1 =
-            vec2 0.065 0.5 |> Math.Vector2.scale 0.65
-
-        initBall =
-            ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1, angle = vec2 0 1, timeOffset = 0 } )
-
-        portal =
-            createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
-
         ( balls, ghosts ) =
             createBalls
-                [ initBall
+                [ game.initBall
                 ]
-                [ portal ]
+                [ game.portal ]
 
         duration =
             durationFromBalls balls ghosts
     in
+    ( { model
+        | balls = balls
+        , ghosts = ghosts
+        , game = Just game
+        , playTime = Nothing
+        , relativeTime = 0
+        , line = Nothing
+        , targetDuration = Nothing
+        , displayScaling = Nothing
+      }
+    , Task.perform Play Time.now
+    )
+
+
+vec2Decoder : Decoder Vec2
+vec2Decoder =
+    JD.list JD.float
+        |> JD.andThen
+            (\lst ->
+                case lst of
+                    [ x, y ] ->
+                        JD.succeed (vec2 x y)
+
+                    _ ->
+                        JD.fail "Wrong number of elements"
+            )
+
+
+vaDecoder : Decoder VelAcc
+vaDecoder =
+    JD.list JD.float
+        |> JD.andThen
+            (\lst ->
+                case lst of
+                    [ x, y, scale ] ->
+                        JD.succeed (vec2 x y |> Math.Vector2.scale scale |> avFromV)
+
+                    _ ->
+                        JD.fail "Wrong number of elements"
+            )
+
+
+initBallDecoder : Decoder ( BallType, BallPosition )
+initBallDecoder =
+    JD.field "t" JD.float
+        |> JD.andThen
+            (\t ->
+                JD.field "x" vec2Decoder
+                    |> JD.andThen
+                        (\x ->
+                            JD.field "v" vaDecoder
+                                |> JD.andThen
+                                    (\va ->
+                                        JD.field "angle" vec2Decoder
+                                            |> JD.andThen
+                                                (\angle ->
+                                                    JD.succeed ( Normal, OnBoard { t = t, x = x, va = va, angle = angle, timeOffset = 0 } )
+                                                )
+                                    )
+                        )
+            )
+
+
+portalDecoder : Decoder Portal
+portalDecoder =
+    JD.field "entrance" vec2Decoder
+        |> JD.andThen
+            (\entrance ->
+                JD.field "exit" vec2Decoder
+                    |> JD.andThen
+                        (\exit ->
+                            JD.field "angle" JD.float
+                                |> JD.andThen
+                                    (\angle ->
+                                        JD.field "timeDelta" JD.float
+                                            |> JD.andThen
+                                                (\timeDelta ->
+                                                    JD.succeed (createPortal entrance exit (angle * pi) timeDelta)
+                                                )
+                                    )
+                        )
+            )
+
+
+gameDecoder : Decoder GameDefinition
+gameDecoder =
+    JD.field "initBall" initBallDecoder
+        |> JD.andThen
+            (\initBall ->
+                JD.field "portal" portalDecoder
+                    |> JD.andThen
+                        (\portal ->
+                            JD.at [ "space", "height" ] JD.float
+                                |> JD.andThen
+                                    (\spaceHeight ->
+                                        JD.at [ "space", "width" ] JD.float
+                                            |> JD.andThen
+                                                (\spaceWidth ->
+                                                    JD.succeed { initBall = initBall, portal = portal, spaceHeight = spaceHeight, spaceWidth = spaceWidth }
+                                                )
+                                    )
+                        )
+            )
+
+
+init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
+init _ _ _ =
+    let
+        {- v1 =
+               vec2 0.065 0.5 |> Math.Vector2.scale 0.65
+
+           initBall =
+               ( Normal, OnBoard { t = 2000.0, x = vec2 250 100, va = avFromV v1, angle = vec2 0 1, timeOffset = 0 } )
+
+           portal =
+               createPortal (vec2 300 400) (vec2 100 300) (1.47 * pi) 1500
+
+           ( balls, ghosts ) =
+               createBalls
+                   [ initBall
+                   ]
+                   [ portal ]
+        -}
+        balls =
+            []
+
+        ghosts =
+            []
+
+        duration =
+            durationFromBalls balls ghosts
+
+        expect =
+            gameDecoder |> Http.expectJson (Result.map NewGame >> Result.withDefault DoNothing)
+    in
     ( { relativeTime = 0
       , playTime = Nothing
       , line = Nothing
-      , initBall = initBall
       , balls = balls
       , duration = duration
-      , portal = portal
       , ghosts = ghosts
       , targetDuration = Nothing
       , viewport = Nothing
       , displayScaling = Nothing
-      , spaceHeight = 600
-      , spaceWidth = 500
+      , game = Nothing
       }
     , Cmd.batch
         [ Task.perform Play Time.now
         , Task.attempt CurrentViewport (Dom.getElement "svg-board")
+        , Http.get { url = "/level1.json", expect = expect }
         ]
     )
 
@@ -736,17 +867,22 @@ init _ _ _ =
 type Msg
     = Tick Time.Posix
     | Play Time.Posix
-    | MouseDownEvent DisplayScaling Mouse.Event
+    | SetTargetDuration Int Time.Posix
+    | CurrentViewport (Result.Result Dom.Error Dom.Element)
+    | Resize
+    | DoNothing
+    | NewGame GameDefinition
+    | GameEvent GameMsg
+
+
+type GameMsg
+    = MouseDownEvent DisplayScaling Mouse.Event
     | MouseMoveEvent DisplayScaling Mouse.Event
     | MouseUpEvent Mouse.Event
     | MouseLeaveEvent Mouse.Event
     | ChangeLineTime (Maybe Int)
-    | SetTargetDuration Int Time.Posix
-    | CurrentViewport (Result.Result Dom.Error Dom.Element)
-    | Resize
     | MatchLineToGhost
     | ConvergeLineToGhost
-    | DoNothing
 
 
 pe2Vec2 : DisplayScaling -> Mouse.Event -> Vec2
@@ -780,8 +916,8 @@ vecToExitStartingPoint portal x =
     Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction)
 
 
-updateWithNewLine : Model -> Line -> ( Model, Cmd Msg )
-updateWithNewLine model line =
+updateWithNewLine : Model -> GameDefinition -> Line -> ( Model, Cmd Msg )
+updateWithNewLine model game line =
     let
         distance =
             Math.Vector2.distance line.e line.s
@@ -793,7 +929,7 @@ updateWithNewLine model line =
             { t = line.time, x = line.s, va = avFromV initV, timeOffset = 0, angle = vec2 0 1 }
 
         ( balls, ghosts ) =
-            createBalls [ model.initBall, ( Substance, OnBoard pos2 ) ] [ model.portal ]
+            createBalls [ game.initBall, ( Substance, OnBoard pos2 ) ] [ game.portal ]
 
         targetDuration =
             durationFromBalls balls ghosts
@@ -826,6 +962,34 @@ updateDuration model newTime =
                         ( durationAnimation.start + round (timePassed * rate * diff / abs diff), Just durationAnimation )
             in
             { model | duration = duration, targetDuration = targetDuration }
+
+
+setDisplayScaling : Model -> Model
+setDisplayScaling model =
+    case ( model.game, model.viewport ) of
+        ( Just game, Just vp ) ->
+            let
+                scaler =
+                    Basics.min
+                        (vp.element.height / game.spaceHeight)
+                        (vp.element.width / game.spaceWidth)
+
+                invScaler =
+                    1 / scaler
+
+                fromDisplay =
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 invScaler invScaler 1))
+
+                toDisplay =
+                    matrix4Tofn2 (Math.Matrix4.makeScale (vec3 scaler scaler 1))
+
+                displayScaling =
+                    { fromDisplay = fromDisplay, toDisplay = toDisplay }
+            in
+            { model | viewport = Just vp, displayScaling = Just displayScaling }
+
+        _ ->
+            model
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -861,139 +1025,6 @@ update msg model =
             , Cmd.none
             )
 
-        MouseDownEvent ds event ->
-            ( if event.isPrimary then
-                let
-                    v =
-                        pe2Vec2 ds event
-
-                    line =
-                        case model.line of
-                            Nothing ->
-                                v
-                                    |> vecToMaybeExitStartingPoint model.portal
-                                    |> Maybe.map
-                                        (\s ->
-                                            { s = s
-                                            , e = v
-                                            , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
-                                            , editState = LineEndMoving v
-                                            }
-                                        )
-
-                            Just ln ->
-                                let
-                                    startDistance =
-                                        Math.Vector2.distance v ln.s
-
-                                    endDistance =
-                                        Math.Vector2.distance v ln.e
-
-                                    minDistance =
-                                        [ 20.0, startDistance, endDistance ] |> List.minimum |> Maybe.withDefault 20.0
-                                in
-                                if startDistance <= minDistance then
-                                    Just { ln | editState = LineStartMoving ln.s }
-
-                                else if endDistance <= minDistance then
-                                    Just { ln | editState = LineEndMoving ln.e }
-
-                                else
-                                    Just ln
-                in
-                { model | line = line }
-
-              else
-                model
-            , Task.perform (MouseMoveEvent ds) (Task.succeed event)
-            )
-
-        MouseMoveEvent ds event ->
-            if event.isPrimary then
-                let
-                    newLine =
-                        model.line
-                            |> Maybe.map
-                                (\line ->
-                                    case line.editState of
-                                        LineFixed ->
-                                            line
-
-                                        LineEndMoving anchor ->
-                                            let
-                                                delta =
-                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
-
-                                                multiplier =
-                                                    Basics.min (0.005 + ((Math.Vector2.length delta / 200) ^ 1.5)) 1
-
-                                                modifiedPoint =
-                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
-                                            in
-                                            { line | e = modifiedPoint }
-
-                                        LineStartMoving anchor ->
-                                            let
-                                                delta =
-                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
-
-                                                multiplier =
-                                                    Basics.min ((Math.Vector2.length delta / 200) ^ 1.2) 1
-
-                                                modifiedPoint =
-                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
-                                            in
-                                            { line | s = modifiedPoint |> vecToExitStartingPoint model.portal }
-                                )
-                in
-                case newLine of
-                    Just line ->
-                        updateWithNewLine model line
-
-                    Nothing ->
-                        ( model, Cmd.none )
-
-            else
-                ( model, Cmd.none )
-
-        MouseUpEvent event ->
-            if event.isPrimary then
-                case model.line of
-                    Just line ->
-                        updateWithNewLine model { line | editState = LineFixed }
-
-                    Nothing ->
-                        ( model, Cmd.none )
-
-            else
-                ( model, Cmd.none )
-
-        MouseLeaveEvent event ->
-            if event.isPrimary then
-                case model.line of
-                    Just line ->
-                        updateWithNewLine model { line | editState = LineFixed }
-
-                    Nothing ->
-                        ( model, Cmd.none )
-
-            else
-                ( model, Cmd.none )
-
-        ChangeLineTime lt ->
-            let
-                ( newModel, cmd ) =
-                    Maybe.map2
-                        (\t ->
-                            \line ->
-                                updateWithNewLine model { line | time = t }
-                        )
-                        (lt |> Maybe.map toFloat)
-                        model.line
-                        |> Maybe.withDefault ( model, Cmd.none )
-            in
-            ( newModel, cmd )
-
         SetTargetDuration duration t ->
             ( { model | targetDuration = Just { start = model.duration, end = duration, startTime = t } }, Cmd.none )
 
@@ -1003,97 +1034,232 @@ update msg model =
                     ( model, Cmd.none )
 
                 Result.Ok vp ->
-                    let
-                        scaler =
-                            Basics.min
-                                (vp.element.height / model.spaceHeight)
-                                (vp.element.width / model.spaceWidth)
-
-                        invScaler =
-                            1 / scaler
-
-                        fromDisplay =
-                            matrix4Tofn2 (Math.Matrix4.makeScale (vec3 invScaler invScaler 1))
-
-                        toDisplay =
-                            matrix4Tofn2 (Math.Matrix4.makeScale (vec3 scaler scaler 1))
-
-                        displayScaling =
-                            { fromDisplay = fromDisplay, toDisplay = toDisplay }
-                    in
-                    ( { model | viewport = Just vp, displayScaling = Just displayScaling }, Cmd.none )
+                    ( { model | viewport = Just vp } |> setDisplayScaling, Cmd.none )
 
         Resize ->
             ( model, Task.attempt CurrentViewport (Dom.getElement "svg-board") )
 
-        MatchLineToGhost ->
+        NewGame game ->
             let
-                lineCandidate =
-                    model.ghosts
-                        |> List.map
-                            (\ghost ->
-                                Maybe.map2
-                                    (\position ->
-                                        \velocity ->
-                                            ( position, velocity, ghost.initTime )
-                                    )
-                                    ghost.initPosition
-                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
-                            )
-                        |> List.filterMap identity
-                        |> List.head
-                        |> Maybe.map
-                            (\( position, velocity, t ) ->
-                                { s = position
-                                , e = posAtT position velocity.stopTime velocity
-                                , time = t
-                                , editState = LineFixed
-                                }
-                            )
+                ( balls, ghosts ) =
+                    createBalls
+                        [ game.initBall
+                        ]
+                        [ game.portal ]
+
+                duration =
+                    durationFromBalls balls ghosts
             in
-            case lineCandidate of
-                Nothing ->
-                    ( model, Cmd.none )
-
-                Just line ->
-                    updateWithNewLine model line
-
-        ConvergeLineToGhost ->
-            let
-                lineCandidate =
-                    model.ghosts
-                        |> List.map
-                            (\ghost ->
-                                Maybe.map2
-                                    (\position ->
-                                        \velocity ->
-                                            ( position, velocity, ghost.initTime )
-                                    )
-                                    ghost.initPosition
-                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
-                            )
-                        |> List.filterMap identity
-                        |> List.head
-                        |> Maybe.map2
-                            (\line ->
-                                \( position, velocity, t ) ->
-                                    { s = position |> avgVectors line.s |> vecToExitStartingPoint model.portal
-                                    , e = posAtT position velocity.stopTime velocity |> avgVectors line.e
-                                    , time = (t + line.time) / 2
-                                    , editState = LineFixed
-                                    }
-                            )
-                            model.line
-            in
-            case lineCandidate of
-                Nothing ->
-                    ( model, Cmd.none )
-
-                Just line ->
-                    updateWithNewLine model line
+            ( { model | duration = duration, balls = balls, ghosts = ghosts, game = Just game } |> setDisplayScaling, Cmd.none )
 
         DoNothing ->
             ( model, Cmd.none )
+
+        GameEvent gameMsg ->
+            case model.game of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just game ->
+                    case gameMsg of
+                        MouseDownEvent ds event ->
+                            ( if event.isPrimary then
+                                let
+                                    v =
+                                        pe2Vec2 ds event
+
+                                    line =
+                                        case model.line of
+                                            Nothing ->
+                                                v
+                                                    |> vecToMaybeExitStartingPoint game.portal
+                                                    |> Maybe.map
+                                                        (\s ->
+                                                            { s = s
+                                                            , e = v
+                                                            , time = model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault (model.relativeTime |> toFloat)
+                                                            , editState = LineEndMoving v
+                                                            }
+                                                        )
+
+                                            Just ln ->
+                                                let
+                                                    startDistance =
+                                                        Math.Vector2.distance v ln.s
+
+                                                    endDistance =
+                                                        Math.Vector2.distance v ln.e
+
+                                                    minDistance =
+                                                        [ 20.0, startDistance, endDistance ] |> List.minimum |> Maybe.withDefault 20.0
+                                                in
+                                                if startDistance <= minDistance then
+                                                    Just { ln | editState = LineStartMoving ln.s }
+
+                                                else if endDistance <= minDistance then
+                                                    Just { ln | editState = LineEndMoving ln.e }
+
+                                                else
+                                                    Just ln
+                                in
+                                { model | line = line }
+
+                              else
+                                model
+                            , Task.perform (MouseMoveEvent ds >> GameEvent) (Task.succeed event)
+                            )
+
+                        MouseMoveEvent ds event ->
+                            if event.isPrimary then
+                                let
+                                    newLine =
+                                        model.line
+                                            |> Maybe.map
+                                                (\line ->
+                                                    case line.editState of
+                                                        LineFixed ->
+                                                            line
+
+                                                        LineEndMoving anchor ->
+                                                            let
+                                                                delta =
+                                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
+
+                                                                multiplier =
+                                                                    Basics.min (0.005 + ((Math.Vector2.length delta / 200) ^ 1.5)) 1
+
+                                                                modifiedPoint =
+                                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
+                                                            in
+                                                            { line | e = modifiedPoint }
+
+                                                        LineStartMoving anchor ->
+                                                            let
+                                                                delta =
+                                                                    Math.Vector2.sub (pe2Vec2 ds event) anchor
+
+                                                                multiplier =
+                                                                    Basics.min ((Math.Vector2.length delta / 200) ^ 1.2) 1
+
+                                                                modifiedPoint =
+                                                                    Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
+                                                            in
+                                                            { line | s = modifiedPoint |> vecToExitStartingPoint game.portal }
+                                                )
+                                in
+                                case newLine of
+                                    Just line ->
+                                        updateWithNewLine model game line
+
+                                    Nothing ->
+                                        ( model, Cmd.none )
+
+                            else
+                                ( model, Cmd.none )
+
+                        MouseUpEvent event ->
+                            if event.isPrimary then
+                                case model.line of
+                                    Just line ->
+                                        updateWithNewLine model game { line | editState = LineFixed }
+
+                                    Nothing ->
+                                        ( model, Cmd.none )
+
+                            else
+                                ( model, Cmd.none )
+
+                        MouseLeaveEvent event ->
+                            if event.isPrimary then
+                                case model.line of
+                                    Just line ->
+                                        updateWithNewLine model game { line | editState = LineFixed }
+
+                                    Nothing ->
+                                        ( model, Cmd.none )
+
+                            else
+                                ( model, Cmd.none )
+
+                        ChangeLineTime lt ->
+                            let
+                                ( newModel, cmd ) =
+                                    Maybe.map2
+                                        (\t ->
+                                            \line ->
+                                                updateWithNewLine model game { line | time = t }
+                                        )
+                                        (lt |> Maybe.map toFloat)
+                                        model.line
+                                        |> Maybe.withDefault ( model, Cmd.none )
+                            in
+                            ( newModel, cmd )
+
+                        MatchLineToGhost ->
+                            let
+                                lineCandidate =
+                                    model.ghosts
+                                        |> List.map
+                                            (\ghost ->
+                                                Maybe.map2
+                                                    (\position ->
+                                                        \velocity ->
+                                                            ( position, velocity, ghost.initTime )
+                                                    )
+                                                    ghost.initPosition
+                                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
+                                            )
+                                        |> List.filterMap identity
+                                        |> List.head
+                                        |> Maybe.map
+                                            (\( position, velocity, t ) ->
+                                                { s = position
+                                                , e = posAtT position velocity.stopTime velocity
+                                                , time = t
+                                                , editState = LineFixed
+                                                }
+                                            )
+                            in
+                            case lineCandidate of
+                                Nothing ->
+                                    ( model, Cmd.none )
+
+                                Just line ->
+                                    updateWithNewLine model game line
+
+                        ConvergeLineToGhost ->
+                            let
+                                lineCandidate =
+                                    model.ghosts
+                                        |> List.map
+                                            (\ghost ->
+                                                Maybe.map2
+                                                    (\position ->
+                                                        \velocity ->
+                                                            ( position, velocity, ghost.initTime )
+                                                    )
+                                                    ghost.initPosition
+                                                    (ghost.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity))
+                                            )
+                                        |> List.filterMap identity
+                                        |> List.head
+                                        |> Maybe.map2
+                                            (\line ->
+                                                \( position, velocity, t ) ->
+                                                    { s = position |> avgVectors line.s |> vecToExitStartingPoint game.portal
+                                                    , e = posAtT position velocity.stopTime velocity |> avgVectors line.e
+                                                    , time = (t + line.time) / 2
+                                                    , editState = LineFixed
+                                                    }
+                                            )
+                                            model.line
+                            in
+                            case lineCandidate of
+                                Nothing ->
+                                    ( model, Cmd.none )
+
+                                Just line ->
+                                    updateWithNewLine model game line
 
 
 avgVectors : Vec2 -> Vec2 -> Vec2
@@ -1127,19 +1293,22 @@ view model =
             Basics.min model.relativeTime maxRange |> String.fromInt
 
         ( svgObjects, svgAttributes ) =
-            case model.displayScaling of
-                Nothing ->
+            case ( model.displayScaling, model.game ) of
+                ( Nothing, _ ) ->
                     ( [], [] )
 
-                Just ds ->
+                ( _, Nothing ) ->
+                    ( [], [] )
+
+                ( Just ds, Just game ) ->
                     ( (model.balls |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
                         ++ (model.ghosts |> List.concatMap (\ball -> svgBall ds ball (model.relativeTime |> toFloat)))
-                        ++ svgPortal ds model.portal
+                        ++ svgPortal ds game.portal
                         ++ svgLine ds model.line
-                    , [ Mouse.onDown (MouseDownEvent ds)
-                      , Mouse.onMove (MouseMoveEvent ds)
-                      , Mouse.onUp MouseUpEvent
-                      , Mouse.onLeave MouseLeaveEvent
+                    , [ Mouse.onDown (GameEvent << MouseDownEvent ds)
+                      , Mouse.onMove (GameEvent << MouseMoveEvent ds)
+                      , Mouse.onUp (GameEvent << MouseUpEvent)
+                      , Mouse.onLeave (GameEvent << MouseLeaveEvent)
                       ]
                     )
     in
@@ -1156,8 +1325,8 @@ view model =
             , H.style "grid-template-rows" "50% 50%"
             , H.style "height" "30%"
             ]
-            [ input [ H.type_ "button", onClick MatchLineToGhost, H.value "Match Line To Ghost" ] []
-            , input [ H.type_ "button", onClick ConvergeLineToGhost, H.value "Converge Line To Ghost" ] []
+            [ input [ H.type_ "button", onClick (GameEvent MatchLineToGhost), H.value "Match Line To Ghost" ] []
+            , input [ H.type_ "button", onClick (GameEvent ConvergeLineToGhost), H.value "Converge Line To Ghost" ] []
             ]
         , div
             [ H.style "display" "grid"
@@ -1182,7 +1351,7 @@ view model =
                                 , H.max "3000"
                                 , H.readonly True
                                 , H.value (model.line |> Maybe.map (\l -> l.time) |> Maybe.withDefault 0 |> String.fromFloat)
-                                , onInput (String.toInt >> ChangeLineTime)
+                                , onInput (String.toInt >> ChangeLineTime >> GameEvent)
                                 ]
                                 []
                             ]
