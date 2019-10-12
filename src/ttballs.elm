@@ -25,6 +25,9 @@ import Svg.Attributes exposing (..)
 import Task
 import Time
 import Url
+import Url.Builder as Builder
+import Url.Parser as Parser
+import Url.Parser.Query as Query
 
 
 
@@ -812,13 +815,19 @@ gameDecoder =
 
 
 init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
-init _ _ _ =
+init _ url _ =
     let
         balls =
             []
 
         ghosts =
             []
+
+        level =
+            url |> Parser.parse (Parser.query (Query.string "map")) |> ME.join |> Maybe.withDefault "level1"
+
+        path =
+            Builder.absolute [ level ++ ".json" ] []
 
         duration =
             durationFromBalls balls ghosts
@@ -840,7 +849,7 @@ init _ _ _ =
     , Cmd.batch
         [ Task.perform Play Time.now
         , Task.attempt CurrentViewport (Dom.getElement "svg-board")
-        , Http.get { url = "/level1.json", expect = expect }
+        , Http.get { url = path, expect = expect }
         ]
     )
 
