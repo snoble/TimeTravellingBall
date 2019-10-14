@@ -890,7 +890,7 @@ pe2Vec2 ds event =
 
 vecToMaybeExitStartingPoint : Portal -> Vec2 -> Maybe Vec2
 vecToMaybeExitStartingPoint portal x =
-    if Math.Vector2.distance x portal.exit > 50.0 then
+    if Math.Vector2.distance x portal.exit > 75.0 then
         Nothing
 
     else
