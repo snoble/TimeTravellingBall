@@ -1319,8 +1319,8 @@ view model =
             , H.style "grid-template-rows" "50% 50%"
             , H.style "height" "30%"
             ]
-            [ input [ H.type_ "button", onClick (GameEvent MatchLineToGhost), H.value "Match Line To Ghost" ] []
-            , input [ H.type_ "button", onClick (GameEvent ConvergeLineToGhost), H.value "Converge Line To Ghost" ] []
+            [ input [ H.type_ "button", onClick (GameEvent MatchLineToGhost), H.value "Match Line To Ghost", H.style "height" "100%" ] []
+            , input [ H.type_ "button", onClick (GameEvent ConvergeLineToGhost), H.value "Converge Line To Ghost", H.style "height" "100%" ] []
             ]
         , div
             [ H.style "display" "grid"
