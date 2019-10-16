@@ -7,6 +7,7 @@ import Browser.Events
 import Browser.Navigation as Nav exposing (Key)
 import Complex exposing (toCartesian)
 import Dict exposing (Dict)
+import Dict.Extra as DE
 import Html exposing (..)
 import Html.Attributes as H
 import Html.Events exposing (onClick, onInput)
@@ -228,6 +229,7 @@ type alias Model =
     , viewport : Maybe Dom.Element
     , displayScaling : Maybe DisplayScaling
     , game : Maybe GameDefinition
+    , urlKey : Key
     }
 
 
@@ -251,9 +253,9 @@ createBalls initialState portals =
             positionsDict
                 |> Dict.map (\_ -> movementsFromPositions)
 
-        liveBalls =
+        liveBallDict =
             initDict
-                |> Dict.map
+                |> DE.filterMap
                     (\idx ->
                         \( ballType, _ ) ->
                             movementDict
@@ -269,10 +271,8 @@ createBalls initialState portals =
                                         }
                                     )
                     )
-                |> Dict.values
-                |> List.filterMap identity
 
-        ghosts =
+        ghostBallDict =
             ghostDict
                 |> Dict.map
                     (\idx ->
@@ -289,7 +289,33 @@ createBalls initialState portals =
                             , initAngle = initAngle
                             }
                     )
-                |> Dict.values
+
+        allBallDict =
+            liveBallDict
+                |> Dict.map
+                    (\k ->
+                        \liveBall ->
+                            let
+                                ghostBall =
+                                    ghostBallDict |> Dict.get k
+                            in
+                            case ( liveBall.ballType, ghostBall ) of
+                                ( Substance, Just gb ) ->
+                                    if positionsClose liveBall gb then
+                                        ( { liveBall | ballType = Normal }, Nothing )
+
+                                    else
+                                        ( liveBall, ghostBall )
+
+                                _ ->
+                                    ( liveBall, ghostBall )
+                    )
+
+        liveBalls =
+            allBallDict |> Dict.values |> List.map Tuple.first
+
+        ghosts =
+            allBallDict |> Dict.values |> List.filterMap Tuple.second
     in
     ( liveBalls, ghosts )
 
@@ -815,7 +841,7 @@ gameDecoder =
 
 
 init : () -> Url.Url -> Key -> ( Model, Cmd Msg )
-init _ url _ =
+init _ url key =
     let
         balls =
             []
@@ -845,6 +871,7 @@ init _ url _ =
       , viewport = Nothing
       , displayScaling = Nothing
       , game = Nothing
+      , urlKey = key
       }
     , Cmd.batch
         [ Task.perform Play Time.now
@@ -908,6 +935,30 @@ vecToExitStartingPoint portal x =
                 Math.Vector2.direction x portal.exit
     in
     Math.Vector2.add portal.exit (Math.Vector2.scale 20.0 direction)
+
+
+positionsClose : Ball -> Ball -> Bool
+positionsClose ball1 ball2 =
+    let
+        tDelta =
+            Basics.abs (ball1.initTime - ball2.initTime)
+
+        xDelta =
+            Maybe.map2 (\p1 -> \p2 -> Math.Vector2.distance p1 p2) ball1.initPosition ball2.initPosition
+
+        vDelta =
+            Maybe.map2 (\v1 -> \v2 -> Math.Vector2.distance v1 v2)
+                (ball1.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity |> Maybe.map (\va -> va.v)))
+                (ball2.movements |> List.head |> Maybe.andThen (\m -> m.startVelocity |> Maybe.map (\va -> va.v)))
+    in
+    Maybe.map2
+        (\xD ->
+            \vD ->
+                (tDelta < 100) && (xD < 5) && (vD < 0.1)
+        )
+        xDelta
+        vDelta
+        |> Maybe.withDefault False
 
 
 updateWithNewLine : Model -> GameDefinition -> Line -> ( Model, Cmd Msg )
