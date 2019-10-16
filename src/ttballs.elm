@@ -14,7 +14,7 @@ import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra.Pointer as Mouse
 import Http
 import Json.Decode as JD exposing (Decoder)
-import List.Extra exposing (minimumBy)
+import List.Extra exposing (mapAccuml, minimumBy)
 import List.Nonempty as NE exposing (Nonempty)
 import Math.Matrix4
 import Math.Vector2 exposing (Vec2, add, getX, getY, normalize, vec2)
@@ -253,7 +253,7 @@ createBalls initialState portals =
             positionsDict
                 |> Dict.map (\_ -> movementsFromPositions)
 
-        liveBallDict =
+        liveBalls0 =
             initDict
                 |> DE.filterMap
                     (\idx ->
@@ -271,8 +271,9 @@ createBalls initialState portals =
                                         }
                                     )
                     )
+                |> Dict.values
 
-        ghostBallDict =
+        ghostBalls0 =
             ghostDict
                 |> Dict.map
                     (\idx ->
@@ -289,35 +290,34 @@ createBalls initialState portals =
                             , initAngle = initAngle
                             }
                     )
+                |> Dict.values
 
-        allBallDict =
-            liveBallDict
-                |> Dict.map
-                    (\k ->
+        ( ghostBalls, liveBalls ) =
+            liveBalls0
+                |> mapAccuml
+                    (\ghosts ->
                         \liveBall ->
                             let
-                                ghostBall =
-                                    ghostBallDict |> Dict.get k
+                                ( removedGhosts, filteredGhosts ) =
+                                    ghosts |> List.partition (positionsClose liveBall)
                             in
-                            case ( liveBall.ballType, ghostBall ) of
-                                ( Substance, Just gb ) ->
-                                    if positionsClose liveBall gb then
-                                        ( { liveBall | ballType = Normal }, Nothing )
+                            case removedGhosts of
+                                ghost :: _ ->
+                                    let
+                                        newAngle =
+                                            ghost.movements |> List.head |> Maybe.map (\m -> m.angle)
 
-                                    else
-                                        ( liveBall, ghostBall )
+                                        newMovements =
+                                            liveBall.movements |> List.map (\m -> { m | angle = newAngle |> Maybe.withDefault m.angle })
+                                    in
+                                    ( filteredGhosts, { liveBall | ballType = Normal, movements = newMovements, initAngle = newAngle } )
 
                                 _ ->
-                                    ( liveBall, ghostBall )
+                                    ( ghosts, liveBall )
                     )
-
-        liveBalls =
-            allBallDict |> Dict.values |> List.map Tuple.first
-
-        ghosts =
-            allBallDict |> Dict.values |> List.filterMap Tuple.second
+                    ghostBalls0
     in
-    ( liveBalls, ghosts )
+    ( liveBalls, ghostBalls )
 
 
 
@@ -954,7 +954,7 @@ positionsClose ball1 ball2 =
     Maybe.map2
         (\xD ->
             \vD ->
-                (tDelta < 100) && (xD < 5) && (vD < 0.1)
+                (tDelta < 50) && (xD < 5) && (vD < 0.005)
         )
         xDelta
         vDelta
@@ -1159,11 +1159,11 @@ update msg model =
                                 let
                                     newLine =
                                         model.line
-                                            |> Maybe.map
+                                            |> Maybe.andThen
                                                 (\line ->
                                                     case line.editState of
                                                         LineFixed ->
-                                                            line
+                                                            Nothing
 
                                                         LineEndMoving anchor ->
                                                             let
@@ -1176,7 +1176,7 @@ update msg model =
                                                                 modifiedPoint =
                                                                     Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
                                                             in
-                                                            { line | e = modifiedPoint }
+                                                            Just { line | e = modifiedPoint }
 
                                                         LineStartMoving anchor ->
                                                             let
@@ -1189,7 +1189,7 @@ update msg model =
                                                                 modifiedPoint =
                                                                     Math.Vector2.add (delta |> Math.Vector2.scale multiplier) anchor
                                                             in
-                                                            { line | s = modifiedPoint |> vecToExitStartingPoint game.portal }
+                                                            Just { line | s = modifiedPoint |> vecToExitStartingPoint game.portal }
                                                 )
                                 in
                                 case newLine of
